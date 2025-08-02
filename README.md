@@ -1,10 +1,10 @@
 # core-utilities
 
 <!-- Shared foundational Python utilities for configuration, data processing,
-and file handling -->
+file handling, and process management -->
 
 Shared foundational Python utilities for configuration, data processing, file
-handling, initialization, and process management, used by the following
+handling, and process management, used by the following
 projects:
   * [`trading-peripheral`](https://github.com/carmine560/trading-peripheral)
   * [`trading-assistant`](https://github.com/carmine560/trading-assistant)

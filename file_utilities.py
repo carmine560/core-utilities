@@ -32,12 +32,7 @@ try:
 except ModuleNotFoundError as e:
     WINDOWS_IMPORT_ERROR = e
 
-try:
-    import data_utilities
-
-    DATA_UTILITIES_IMPORT_ERROR = None
-except ModuleNotFoundError as e:
-    DATA_UTILITIES_IMPORT_ERROR = e
+from . import data_utilities
 
 
 # WSL Path Operations
@@ -571,8 +566,6 @@ def create_icon(base, icon_directory=None):
 
     if WINDOWS_IMPORT_ERROR:
         raise RuntimeError(WINDOWS_IMPORT_ERROR)
-    if DATA_UTILITIES_IMPORT_ERROR:
-        raise RuntimeError(DATA_UTILITIES_IMPORT_ERROR)
 
     acronym = data_utilities.create_acronym(base)
     if not acronym:

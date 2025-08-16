@@ -842,6 +842,9 @@ def configure_position(level=0, value=""):
             time.sleep(0.001)
         return coordinates
 
+    if value and value.startswith("${") and value.endswith("}"):
+        return value
+
     parts = value.split(",")
     if len(parts) == 2:
         x = parts[0].strip()

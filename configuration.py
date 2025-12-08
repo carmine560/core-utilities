@@ -644,7 +644,11 @@ def modify_tuple_list(tuple_list, level=0, prompts=None, items=None):
                     value_prompt,
                     level=level,
                     value=value,
-                    all_values=("None",),
+                    all_values=(
+                        ("None", *preset_values)
+                        if preset_values is not None
+                        else ("None",)
+                    ),
                 )
                 tuple_entry = (
                     (key,) if value.lower() in {"", "none"} else (key, value)
@@ -663,7 +667,11 @@ def modify_tuple_list(tuple_list, level=0, prompts=None, items=None):
                     additional_value_prompt,
                     level=level,
                     value=additional_value,
-                    all_values=("None",),
+                    all_values=(
+                        ("None", *preset_values)
+                        if preset_values is not None
+                        else ("None",)
+                    ),
                 )
                 tuple_entry = (
                     (key, value)

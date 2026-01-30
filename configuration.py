@@ -679,7 +679,11 @@ def modify_tuple_list(tuple_list, level=0, prompts=None, items=None):
                     else (key, value, additional_value)
                 )
             elif key in items.get("positioning_keys", set()):
-                value = configure_position(level=level, value=value)
+                value = configure_position(
+                    level=level,
+                    value=value,
+                    all_values=items.get("preset_geometries"),
+                )
                 tuple_entry = (key, value)
             elif key in items.get("nested_keys", set()):
                 value = modify_nested_value(value, level, prompts, items)
@@ -822,7 +826,7 @@ def modify_value(prompt, level=0, value="", all_values=None, limits=()):
     return value
 
 
-def configure_position(level=0, value=""):
+def configure_position(level=0, value="", all_values=None):
     """Configure the position based on user input or mouse click."""
     if GUI_IMPORT_ERROR:
         print(GUI_IMPORT_ERROR)
@@ -832,6 +836,7 @@ def configure_position(level=0, value=""):
         f"coordinates/{ANSI_UNDERLINE}c{ANSI_RESET}lick",
         level=level,
         value=value,
+        all_values=[value, *(all_values or [])],
     )
     if value and value[0].lower() == "c":
         previous_key_state = win32api.GetKeyState(0x01)

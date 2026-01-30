@@ -644,11 +644,7 @@ def modify_tuple_list(tuple_list, level=0, prompts=None, items=None):
                     value_prompt,
                     level=level,
                     value=value,
-                    all_values=(
-                        ("None", *preset_values)
-                        if preset_values is not None
-                        else ("None",)
-                    ),
+                    all_values=("None", *(preset_values or [])),
                 )
                 tuple_entry = (
                     (key,) if value.lower() in {"", "none"} else (key, value)
@@ -667,11 +663,7 @@ def modify_tuple_list(tuple_list, level=0, prompts=None, items=None):
                     additional_value_prompt,
                     level=level,
                     value=additional_value,
-                    all_values=(
-                        ("None", *preset_values)
-                        if preset_values is not None
-                        else ("None",)
-                    ),
+                    all_values=("None", *(preset_values or [])),
                 )
                 tuple_entry = (
                     (key, value)
@@ -836,7 +828,7 @@ def configure_position(level=0, value="", all_values=None):
         f"coordinates/{ANSI_UNDERLINE}c{ANSI_RESET}lick",
         level=level,
         value=value,
-        all_values=[value, *(all_values or [])],
+        all_values=(value, *(all_values or [])),
     )
     if value and value[0].lower() == "c":
         previous_key_state = win32api.GetKeyState(0x01)
@@ -883,7 +875,7 @@ def prompt_for_input(prompt, level=0, value="", all_values=None):
     if all_values:
         completer = CustomWordCompleter(all_values, ignore_case=True)
     elif value:
-        completer = CustomWordCompleter([value], ignore_case=True)
+        completer = CustomWordCompleter((value,), ignore_case=True)
 
     if completer:
         value = (

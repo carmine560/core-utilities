@@ -91,19 +91,27 @@ def write_config(config, config_path, is_encrypted=False):
         if GNUPG_IMPORT_ERROR:
             raise RuntimeError(GNUPG_IMPORT_ERROR)
 
-        config_string = StringIO()
-        config.write(config_string)
         gpg = gnupg.GPG()
         gpg.encoding = "utf-8"
-        fingerprint = ""
-        if config.has_option("General", "fingerprint"):
-            fingerprint = config["General"]["fingerprint"]
-        if not fingerprint:
-            fingerprint = gpg.list_keys()[0]["fingerprint"]
 
+        fingerprint = config.get("General", "fingerprint", fallback="")
+        if not fingerprint:
+            keys = gpg.list_keys()
+            if not keys:
+                raise ConfigError("No usable GPG keys found.")
+            fingerprint = keys[0].get("fingerprint")
+            if not fingerprint:
+                raise ConfigError("GPG key has no fingerprint.")
+
+        config_string = StringIO()
+        config.write(config_string)
         encrypted_config = gpg.encrypt(
             config_string.getvalue(), fingerprint, armor=False
         )
+        if not encrypted_config.ok:
+            raise ConfigError(
+                f"GPG encryption failed: {encrypted_config.status}"
+            )
         with open(f"{config_path}.gpg", "wb") as f:
             f.write(encrypted_config.data)
     else:

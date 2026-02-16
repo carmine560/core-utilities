@@ -67,6 +67,9 @@ class CustomWordCompleter(Completer):
                     yield Completion(word, -len(word_before_cursor))
 
 
+# Configuration File I/O
+
+
 def read_config(config, config_path, is_encrypted=False):
     """Read config from a file, decrypt if is_encrypted is True."""
     if is_encrypted:
@@ -119,6 +122,67 @@ def write_config(config, config_path, is_encrypted=False):
             config.write(f)
 
 
+# Config Comparison Workflow
+
+
+def _truncate_string(string, max_length=256):
+    """Truncate string to maximum length."""
+    if len(string) > max_length:
+        return string[:max_length] + "..."
+    return string
+
+
+def _collect_sections(default_config, excluded_sections):
+    """Return non-empty default config sections, excluding given ones."""
+    return [
+        section
+        for section in default_config.sections()
+        if section not in excluded_sections and default_config.options(section)
+    ]
+
+
+def _collect_options(
+    default_config, user_config, section, user_option_ignored_sections
+):
+    """Return default and user-only options unless section is ignored."""
+    options = list(default_config.options(section))
+    if section in user_option_ignored_sections:
+        return options
+
+    for option in user_config[section]:
+        if option not in default_config[section]:
+            options.append(option)
+    return options
+
+
+def _print_option_diff(
+    section, option, default_value, user_value, default_config, option_indices
+):
+    """Print formatted diff between default and user option values."""
+    if not option_indices:
+        print(f"[{ANSI_BOLD}{section}{ANSI_RESET}]")
+
+    if default_config.has_option(section, option):
+        default_display = (
+            _truncate_string(default_value)
+            if default_value
+            else f"{ANSI_WARNING}(empty){ANSI_RESET}"
+        )
+    else:
+        default_display = f"{ANSI_WARNING}(not exist){ANSI_RESET}"
+
+    user_display = (
+        f"{ANSI_CURRENT}{_truncate_string(user_value)}{ANSI_RESET}"
+        if user_value
+        else f"{ANSI_WARNING}(empty){ANSI_RESET}"
+    )
+
+    print(
+        f"{ANSI_IDENTIFIER}{option}{ANSI_RESET}: "
+        f"{default_display} → {user_display}"
+    )
+
+
 def check_config_changes(
     default_config,
     config_path,
@@ -128,25 +192,12 @@ def check_config_changes(
     is_encrypted=False,
 ):
     """Compare default and user configurations."""
-
-    def truncate_string(string):
-        """Truncate a string to a maximum length."""
-        max_length = 256
-        if len(string) > max_length:
-            string = string[:max_length] + "..."
-        return string
-
     if backup_parameters:
         file_utilities.backup_file(config_path, **backup_parameters)
 
     section_index = 0
     section_indices = []
-    sections = []
-    for section in default_config.sections():
-        if section not in excluded_sections and default_config.options(
-            section
-        ):
-            sections.append(section)
+    sections = _collect_sections(default_config, excluded_sections)
 
     user_config = configparser.ConfigParser(interpolation=None)
     read_config(user_config, config_path, is_encrypted=is_encrypted)
@@ -160,13 +211,9 @@ def check_config_changes(
 
         option_index = 0
         option_indices = []
-        options = default_config.options(section)
-        for option in user_config[section]:
-            if (
-                section not in user_option_ignored_sections
-                and option not in default_config[section]
-            ):
-                options.append(option)
+        options = _collect_options(
+            default_config, user_config, section, user_option_ignored_sections
+        )
 
         while option_index < len(options):
             option = options[option_index]
@@ -174,29 +221,13 @@ def check_config_changes(
             user_value = user_config[section].get(option)
 
             if user_value is not None and default_value != user_value:
-                if not option_indices:
-                    print(f"[{ANSI_BOLD}{section}{ANSI_RESET}]")
-
-                if default_config.has_option(section, option):
-                    tidied_default_value = (
-                        truncate_string(default_value)
-                        if default_value
-                        else f"{ANSI_WARNING}(empty){ANSI_RESET}"
-                    )
-                else:
-                    tidied_default_value = (
-                        f"{ANSI_WARNING}(not exist){ANSI_RESET}"
-                    )
-
-                tidied_user_value = (
-                    f"{ANSI_CURRENT}{truncate_string(user_value)}{ANSI_RESET}"
-                    if user_value
-                    else f"{ANSI_WARNING}(empty){ANSI_RESET}"
-                )
-
-                print(
-                    f"{ANSI_IDENTIFIER}{option}{ANSI_RESET}: "
-                    f"{tidied_default_value} → {tidied_user_value}"
+                _print_option_diff(
+                    section,
+                    option,
+                    default_value,
+                    user_value,
+                    default_config,
+                    option_indices,
                 )
 
                 answers = ["default", "back", "quit"]
@@ -231,6 +262,9 @@ def check_config_changes(
         section_index += 1
 
 
+# Config Structure Helpers
+
+
 def ensure_section_exists(config, section):
     """Ensure a section is defined, raise ConfigError if not."""
     if not config.has_section(section):
@@ -247,6 +281,9 @@ def list_section(config, section):
 
     print(f"The '{section}' section does not exist.")
     return False
+
+
+# Interactive Config Modification
 
 
 def modify_section(
@@ -482,6 +519,9 @@ def delete_option(
 
     print(f"The '{option}' option does not exist.")
     return False
+
+
+# Interactive Value Editors
 
 
 def modify_dictionary(dictionary, level=0, prompts=None, all_values=None):
@@ -739,6 +779,9 @@ def modify_tuple_list(tuple_list, level=0, prompts=None, items=None):
     return tuple_list
 
 
+# Value Parsing and Validation
+
+
 def get_strict_boolean(config, section, option):
     """Retrieve a strict boolean value from a configuration section."""
     value = config.get(section, option)
@@ -758,6 +801,9 @@ def evaluate_value(value):
         print(e)
         sys.exit(1)
     return evaluated_value
+
+
+# User Interaction Helpers
 
 
 def tidy_answer(answers, level=0):

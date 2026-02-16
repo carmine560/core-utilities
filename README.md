@@ -6,10 +6,10 @@ file handling, and process management -->
 Shared foundational Python utilities for configuration, data processing, file
 handling, and process management, used by the following
 projects:
-  * [`trading-peripheral`](https://github.com/carmine560/trading-peripheral)
+  * [`submit-urls`](https://github.com/carmine560/submit-urls)
   * [`trading-assistant`](https://github.com/carmine560/trading-assistant)
   * [`trading-grapher`](https://github.com/carmine560/trading-grapher)
-  * [`submit-urls`](https://github.com/carmine560/submit-urls)
+  * [`trading-peripheral`](https://github.com/carmine560/trading-peripheral)
 
 This project is intended to be used as a Git submodule.
 

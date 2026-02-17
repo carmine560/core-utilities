@@ -671,6 +671,98 @@ def modify_tuple(tuple_entry, level=0, prompts=None, all_values=None):
     return tuple(tuple_entry)
 
 
+def _build_tuple_entry(
+    key,
+    value,
+    additional_value,
+    items,
+    level,
+    prompts,
+    value_prompt,
+    additional_value_prompt,
+):
+    """Build a tuple entry based on the key's type classification."""
+    preset_values = None
+    if key in items.get("preset_value_keys", set()):
+        preset_values = items.get("preset_values")
+    elif key in items.get("boolean_value_keys", set()):
+        preset_values = {"True", "False"}
+
+    if key in items.get("no_value_keys", set()):
+        return (key,)
+
+    if key in items.get("optional_value_keys", set()):
+        value = modify_value(
+            value_prompt,
+            level=level,
+            value=value,
+            all_values=("None", *(preset_values or [])),
+        )
+        return (key,) if value.lower() in {"", "none"} else (key, value)
+
+    if key in items.get("additional_value_keys", set()):
+        value = modify_value(value_prompt, level=level, value=value)
+        additional_value = modify_value(
+            additional_value_prompt, level=level, value=additional_value
+        )
+        return (key, value, additional_value)
+
+    if key in items.get("optional_additional_value_keys", set()):
+        value = modify_value(value_prompt, level=level, value=value)
+        additional_value = modify_value(
+            additional_value_prompt,
+            level=level,
+            value=additional_value,
+            all_values=("None", *(preset_values or [])),
+        )
+        return (
+            (key, value)
+            if additional_value.lower() in {"", "none"}
+            else (key, value, additional_value)
+        )
+
+    if key in items.get("positioning_keys", set()):
+        value = configure_position(
+            level=level,
+            value=value,
+            all_values=items.get("preset_geometries"),
+        )
+        return (key, value)
+
+    if key in items.get("nested_keys", set()):
+        value = modify_nested_value(value, level, prompts, items)
+        return (key, value)
+
+    if key in items.get("optional_additional_nested_keys", set()):
+        value = modify_value(value_prompt, level=level, value=value)
+        additional_value = modify_nested_value(
+            additional_value,
+            level,
+            prompts,
+            items,
+            answers=["build", "call", "none"],
+        )
+        return (
+            (key, value)
+            if additional_value in {"", None}
+            else (key, value, additional_value)
+        )
+
+    if key in items.get("control_flow_keys", set()):
+        value = modify_value(
+            value_prompt, level=level, value=value, all_values=preset_values
+        )
+        additional_value = modify_nested_value(
+            additional_value, level, prompts, items
+        )
+        return (key, value, additional_value)
+
+    value = modify_value(
+        value_prompt, level=level, value=value, all_values=preset_values
+    )
+    return (key, value)
+
+
 def modify_tuple_list(tuple_list, level=0, prompts=None, items=None):
     """Modify a list of tuples based on user prompts and provided items."""
     if not isinstance(tuple_list, list):
@@ -717,88 +809,16 @@ def modify_tuple_list(tuple_list, level=0, prompts=None, items=None):
                 value=key,
                 all_values=items.get("all_keys"),
             )
-            if key in items.get("preset_value_keys", set()):
-                preset_values = items.get("preset_values")
-            elif key in items.get("boolean_value_keys", set()):
-                preset_values = {"True", "False"}
-            else:
-                preset_values = None
-            if key in items.get("no_value_keys", set()):
-                tuple_entry = (key,)
-            elif key in items.get("optional_value_keys", set()):
-                value = modify_value(
-                    value_prompt,
-                    level=level,
-                    value=value,
-                    all_values=("None", *(preset_values or [])),
-                )
-                tuple_entry = (
-                    (key,) if value.lower() in {"", "none"} else (key, value)
-                )
-            elif key in items.get("additional_value_keys", set()):
-                value = modify_value(value_prompt, level=level, value=value)
-                additional_value = modify_value(
-                    additional_value_prompt,
-                    level=level,
-                    value=additional_value,
-                )
-                tuple_entry = (key, value, additional_value)
-            elif key in items.get("optional_additional_value_keys", set()):
-                value = modify_value(value_prompt, level=level, value=value)
-                additional_value = modify_value(
-                    additional_value_prompt,
-                    level=level,
-                    value=additional_value,
-                    all_values=("None", *(preset_values or [])),
-                )
-                tuple_entry = (
-                    (key, value)
-                    if additional_value.lower() in {"", "none"}
-                    else (key, value, additional_value)
-                )
-            elif key in items.get("positioning_keys", set()):
-                value = configure_position(
-                    level=level,
-                    value=value,
-                    all_values=items.get("preset_geometries"),
-                )
-                tuple_entry = (key, value)
-            elif key in items.get("nested_keys", set()):
-                value = modify_nested_value(value, level, prompts, items)
-                tuple_entry = (key, value)
-            elif key in items.get("optional_additional_nested_keys", set()):
-                value = modify_value(value_prompt, level=level, value=value)
-                additional_value = modify_nested_value(
-                    additional_value,
-                    level,
-                    prompts,
-                    items,
-                    answers=["build", "call", "none"],
-                )
-                tuple_entry = (
-                    (key, value)
-                    if additional_value in {"", None}
-                    else (key, value, additional_value)
-                )
-            elif key in items.get("control_flow_keys", set()):
-                value = modify_value(
-                    value_prompt,
-                    level=level,
-                    value=value,
-                    all_values=preset_values,
-                )
-                additional_value = modify_nested_value(
-                    additional_value, level, prompts, items
-                )
-                tuple_entry = (key, value, additional_value)
-            else:
-                value = modify_value(
-                    value_prompt,
-                    level=level,
-                    value=value,
-                    all_values=preset_values,
-                )
-                tuple_entry = (key, value)
+            tuple_entry = _build_tuple_entry(
+                key,
+                value,
+                additional_value,
+                items,
+                level,
+                prompts,
+                value_prompt,
+                additional_value_prompt,
+            )
             if answer == "insert":
                 tuple_list.insert(index, tuple_entry)
             else:

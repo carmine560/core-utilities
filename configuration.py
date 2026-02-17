@@ -381,6 +381,85 @@ def modify_section(
     return False
 
 
+def _build_answers_boolean(
+    config, section, option, can_back, can_insert_delete
+):
+    """Build answer choices and optional boolean value for an option."""
+    try:
+        boolean_value = get_strict_boolean(config, section, option)
+        answers = ["modify", "toggle", "default", "quit"]
+    except ValueError:
+        boolean_value = None
+        answers = ["modify", "default", "quit"]
+    if can_back:
+        answers.insert(answers.index("quit"), "back")
+    if can_insert_delete:
+        answers[answers.index("default")] = "delete"
+    return answers, boolean_value
+
+
+def _modify_option_by_type(
+    config,
+    section,
+    option,
+    config_path,
+    is_encrypted,
+    evaluated_value,
+    prompts,
+    items,
+    all_values,
+    limits,
+):
+    """Modify a config option based on the evaluated value's type."""
+    if isinstance(evaluated_value, dict):
+        config[section][option] = str(
+            modify_dictionary(
+                evaluated_value,
+                level=1,
+                prompts=prompts,
+                all_values=all_values,
+            )
+        )
+        return True
+
+    if isinstance(evaluated_value, tuple) and all(
+        isinstance(i, str) for i in evaluated_value
+    ):
+        config[section][option] = str(
+            modify_tuple(
+                evaluated_value,
+                level=1,
+                prompts=prompts,
+                all_values=all_values,
+            )
+        )
+        return True
+
+    if isinstance(evaluated_value, list) and all(
+        isinstance(item, tuple) for item in evaluated_value
+    ):
+        if evaluated_value == [()]:
+            evaluated_value = []
+        tuple_list = modify_tuple_list(
+            evaluated_value, prompts=prompts, items=items
+        )
+        if tuple_list:
+            config[section][option] = str(tuple_list)
+            return True
+        delete_option(
+            config, section, option, config_path, is_encrypted=is_encrypted
+        )
+        return False
+
+    config[section][option] = modify_value(
+        prompts.get("value", "value"),
+        value=config[section][option],
+        all_values=all_values,
+        limits=limits,
+    )
+    return True
+
+
 def modify_option(
     config,
     section,
@@ -404,100 +483,59 @@ def modify_option(
     if prompts is None:
         prompts = {}
 
-    if config.has_option(section, option):
-        print(
-            f"{ANSI_IDENTIFIER}{option}{ANSI_RESET} = "
-            f"{ANSI_CURRENT}{config[section][option]}{ANSI_RESET}"
+    if not config.has_option(section, option):
+        print(f"The '{option}' option does not exist.")
+        return False
+
+    print(
+        f"{ANSI_IDENTIFIER}{option}{ANSI_RESET} = "
+        f"{ANSI_CURRENT}{config[section][option]}{ANSI_RESET}"
+    )
+
+    answers, boolean_value = _build_answers_boolean(
+        config, section, option, can_back, can_insert_delete
+    )
+    answer = tidy_answer(answers)
+
+    if answer == "modify":
+        if not _modify_option_by_type(
+            config,
+            section,
+            option,
+            config_path,
+            is_encrypted,
+            evaluate_value(config[section][option]),
+            prompts,
+            items,
+            all_values,
+            limits,
+        ):
+            return False
+    elif answer == "toggle":
+        config[section][option] = str(not boolean_value)
+    elif answer == "empty":
+        config[section][option] = ""
+    elif answer in {"default", "delete"}:
+        delete_option(
+            config, section, option, config_path, is_encrypted=is_encrypted
         )
-        try:
-            boolean_value = get_strict_boolean(config, section, option)
-            answers = ["modify", "toggle", "default", "quit"]
-        except ValueError:
-            answers = ["modify", "default", "quit"]
-        if can_back:
-            answers.insert(answers.index("quit"), "back")
-        if can_insert_delete:
-            answers[answers.index("default")] = "delete"
-
-        answer = tidy_answer(answers)
-
-        if answer == "modify":
-            evaluated_value = evaluate_value(config[section][option])
-            if isinstance(evaluated_value, dict):
-                config[section][option] = str(
-                    modify_dictionary(
-                        evaluated_value,
-                        level=1,
-                        prompts=prompts,
-                        all_values=all_values,
-                    )
-                )
-            elif isinstance(evaluated_value, tuple) and all(
-                isinstance(i, str) for i in evaluated_value
-            ):
-                config[section][option] = str(
-                    modify_tuple(
-                        evaluated_value,
-                        level=1,
-                        prompts=prompts,
-                        all_values=all_values,
-                    )
-                )
-            elif isinstance(evaluated_value, list) and all(
-                isinstance(item, tuple) for item in evaluated_value
-            ):
-                if evaluated_value == [()]:
-                    evaluated_value = []
-
-                tuple_list = modify_tuple_list(
-                    evaluated_value, prompts=prompts, items=items
-                )
-                if tuple_list:
-                    config[section][option] = str(tuple_list)
-                else:
-                    delete_option(
-                        config,
-                        section,
-                        option,
-                        config_path,
-                        is_encrypted=is_encrypted,
-                    )
-                    return False
-            else:
-                config[section][option] = modify_value(
-                    prompts.get("value", "value"),
-                    value=config[section][option],
-                    all_values=all_values,
-                    limits=limits,
-                )
-        elif answer == "toggle":
-            config[section][option] = str(not boolean_value)
-        elif answer == "empty":
-            config[section][option] = ""
-        elif answer in {"default", "delete"}:
+        return False
+    elif answer == "back":
+        return answer
+    elif answer in {"", "quit"}:
+        if config[section][option] == initial_value:
             delete_option(
-                config, section, option, config_path, is_encrypted=is_encrypted
+                config,
+                section,
+                option,
+                config_path,
+                is_encrypted=is_encrypted,
             )
             return False
-        elif answer == "back":
-            return answer
-        elif answer in {"", "quit"}:
-            if config[section][option] == initial_value:
-                delete_option(
-                    config,
-                    section,
-                    option,
-                    config_path,
-                    is_encrypted=is_encrypted,
-                )
-                return False
-            return answer
+        return answer
 
-        write_config(config, config_path, is_encrypted=is_encrypted)
-        return True
-
-    print(f"The '{option}' option does not exist.")
-    return False
+    write_config(config, config_path, is_encrypted=is_encrypted)
+    return True
 
 
 def delete_option(

@@ -95,86 +95,106 @@ def archive_encrypt_directory(source, output_directory, fingerprint=""):
     gpg.encrypt_file(tar_stream, fingerprint, armor=False, output=output)
 
 
+def _resolve_source(source, should_compare):
+    """Resolve encrypted source path and comparison behavior."""
+    encrypted = source + ".gpg"
+    if os.path.isfile(encrypted):
+        return encrypted, False
+    return source, should_compare
+
+
+def _remove_directory(path):
+    """Remove directory or exit on failure."""
+    try:
+        shutil.rmtree(path)
+    except OSError as e:
+        print(e)
+        sys.exit(1)
+
+
+def _split_source_name(source, should_compare):
+    """Derive backup base name and suffix from source path."""
+    if should_compare:
+        base = os.path.splitext(os.path.basename(source))[0]
+        suffix = os.path.splitext(source)[1]
+    else:
+        base = os.path.splitext(os.path.splitext(os.path.basename(source))[0])[
+            0
+        ]
+        suffix = os.path.splitext(os.path.splitext(source)[0])[1] + ".gpg"
+    return base, suffix
+
+
+def _list_backups(backup_directory, base, suffix):
+    """List existing backups matching the expected naming pattern."""
+    pattern = rf"{base}-\d{{8}}T\d{{6}}{suffix}"
+    return sorted(
+        f for f in os.listdir(backup_directory) if re.fullmatch(pattern, f)
+    )
+
+
+def _should_copy(source, backup_directory, backups, should_compare):
+    """Decide whether a new backup copy is needed."""
+    if not should_compare or not backups:
+        return True
+
+    with open(source, "rb") as f:
+        source_contents = f.read()
+
+    with open(os.path.join(backup_directory, backups[-1]), "rb") as f:
+        last_backup_contents = f.read()
+
+    return source_contents != last_backup_contents
+
+
+def _prune_backups(backup_directory, backups, limit):
+    """Remove oldest backups to enforce the retention limit."""
+    excess = len(backups) - limit
+    for f in backups[:excess]:
+        try:
+            os.remove(os.path.join(backup_directory, f))
+        except OSError as e:
+            print(e)
+            sys.exit(1)
+
+
 def backup_file(
     source, backup_directory=None, number_of_backups=-1, should_compare=True
 ):
     """Backup a file to a specified directory, with optional encryption."""
-    encrypted_source = source + ".gpg"
-    if os.path.isfile(encrypted_source):
-        source = encrypted_source
-        should_compare = False
+    source, should_compare = _resolve_source(source, should_compare)
 
-    if os.path.isfile(source):
-        if not backup_directory:
-            backup_directory = os.path.join(os.path.dirname(source), "backups")
+    if not os.path.isfile(source):
+        return
 
-        if number_of_backups:
-            check_directory(backup_directory)
-            if not should_compare:
-                source_base = os.path.splitext(
-                    os.path.splitext(os.path.basename(source))[0]
-                )[0]
-                source_suffix = (
-                    os.path.splitext(os.path.splitext(source)[0])[1] + ".gpg"
-                )
-            else:
-                source_base = os.path.splitext(os.path.basename(source))[0]
-                source_suffix = os.path.splitext(source)[1]
+    if not backup_directory:
+        backup_directory = os.path.join(os.path.dirname(source), "backups")
 
-            backup = os.path.join(
-                backup_directory,
-                source_base
-                + datetime.fromtimestamp(os.path.getmtime(source)).strftime(
-                    "-%Y%m%dT%H%M%S"
-                )
-                + source_suffix,
-            )
-            backups = sorted(
-                [
-                    f
-                    for f in os.listdir(backup_directory)
-                    if re.fullmatch(
-                        rf"{source_base}" rf"-\d{{8}}T\d{{6}}{source_suffix}",
-                        f,
-                    )
-                ]
-            )
+    if not number_of_backups:
+        if os.path.isdir(backup_directory):
+            _remove_directory(backup_directory)
+        return
 
-            if not os.path.isfile(backup):
-                should_copy = True
-                if should_compare and backups:
-                    with open(source, "rb") as f:
-                        source_contents = f.read()
-                    with open(
-                        os.path.join(backup_directory, backups[-1]), "rb"
-                    ) as f:
-                        last_backup_contents = f.read()
-                    if source_contents == last_backup_contents:
-                        should_copy = False
-                if should_copy:
-                    try:
-                        shutil.copy2(source, backup)
-                        backups.append(os.path.basename(backup))
-                    except OSError as e:
-                        print(e)
-                        sys.exit(1)
+    check_directory(backup_directory)
 
-            if number_of_backups > 0:
-                excess = len(backups) - number_of_backups
-                if excess > 0:
-                    for f in backups[:excess]:
-                        try:
-                            os.remove(os.path.join(backup_directory, f))
-                        except OSError as e:
-                            print(e)
-                            sys.exit(1)
+    base, suffix = _split_source_name(source, should_compare)
+    timestamp = datetime.fromtimestamp(os.path.getmtime(source)).strftime(
+        "-%Y%m%dT%H%M%S"
+    )
+    backup = os.path.join(backup_directory, f"{base}{timestamp}{suffix}")
+    backups = _list_backups(backup_directory, base, suffix)
 
-        elif os.path.isdir(backup_directory):
+    if not os.path.isfile(backup):
+        if _should_copy(source, backup_directory, backups, should_compare):
             try:
-                shutil.rmtree(backup_directory)
+                shutil.copy2(source, backup)
+                backups.append(os.path.basename(backup))
             except OSError as e:
                 print(e)
                 sys.exit(1)
+
+    if number_of_backups > 0:
+        _prune_backups(backup_directory, backups, number_of_backups)
 
 
 def can_overwrite(path):

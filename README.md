@@ -1,4 +1,4 @@
-# core-utilities
+# core-utilities Submodule
 
 <!-- Shared foundational Python utilities for configuration, data processing,
 file handling, and process management -->
@@ -10,8 +10,6 @@ projects:
   * [`trading-assistant`](https://github.com/carmine560/trading-assistant)
   * [`trading-grapher`](https://github.com/carmine560/trading-grapher)
   * [`trading-peripheral`](https://github.com/carmine560/trading-peripheral)
-
-This project is intended to be used as a Git submodule.
 
 ## License
 

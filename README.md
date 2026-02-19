@@ -1,4 +1,4 @@
-# core-utilities Submodule
+# `core-utilities` Submodule
 
 <!-- Shared foundational Python utilities for configuration, data processing,
 file handling, and process management -->

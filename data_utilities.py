@@ -32,10 +32,10 @@ def create_acronym(phrase):
 
 def title_except_acronyms(string, acronyms):
     """Convert a string to title case, excluding specified acronyms."""
+    acronym_map = {acronym.casefold(): acronym for acronym in acronyms}
     words = string.split()
-    for i, _ in enumerate(words):
-        if words[i] not in acronyms:
-            words[i] = words[i].title()
+    for i, word in enumerate(words):
+        words[i] = acronym_map.get(word.casefold(), word.title())
     return " ".join(words)
 
 

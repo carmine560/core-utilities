@@ -29,7 +29,8 @@ try:
     import win32com.client
 
     WINDOWS_IMPORT_ERROR = None
-except ModuleNotFoundError as e:
+except Exception as e:
+    # Treat broken or stubbed Windows bindings the same as a missing install.
     WINDOWS_IMPORT_ERROR = e
 
 from . import data_utilities

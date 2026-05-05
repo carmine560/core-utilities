@@ -83,7 +83,24 @@ def read_config(config, config_path, is_encrypted=False):
 
             gpg = gnupg.GPG()
             decrypted_config = gpg.decrypt(encrypted_config)
-            config.read_string(decrypted_config.data.decode())
+            if not getattr(
+                decrypted_config,
+                "ok",
+                bool(getattr(decrypted_config, "data", b"")),
+            ):
+                status = getattr(
+                    decrypted_config, "status", "decryption failed"
+                )
+                raise ConfigError(
+                    "GPG decryption failed while reading config: "
+                    f"{status or 'decryption failed'}"
+                )
+
+            decrypted_data = getattr(decrypted_config, "data", b"")
+            if not decrypted_data:
+                raise ConfigError("GPG decryption returned no config data.")
+
+            config.read_string(decrypted_data.decode())
     else:
         config.read(config_path, encoding="utf-8")
 

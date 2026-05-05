@@ -35,7 +35,6 @@ except Exception as e:
 
 from . import data_utilities
 
-
 # WSL Path Operations
 
 
@@ -105,12 +104,8 @@ def _resolve_source(source, should_compare):
 
 
 def _remove_directory(path):
-    """Remove directory or exit on failure."""
-    try:
-        shutil.rmtree(path)
-    except OSError as e:
-        print(e)
-        sys.exit(1)
+    """Remove directory or raise on failure."""
+    shutil.rmtree(path)
 
 
 def _split_source_name(source, should_compare):
@@ -152,11 +147,7 @@ def _prune_backups(backup_directory, backups, limit):
     """Remove oldest backups to enforce the retention limit."""
     excess = len(backups) - limit
     for f in backups[:excess]:
-        try:
-            os.remove(os.path.join(backup_directory, f))
-        except OSError as e:
-            print(e)
-            sys.exit(1)
+        os.remove(os.path.join(backup_directory, f))
 
 
 def backup_file(
@@ -187,12 +178,8 @@ def backup_file(
 
     if not os.path.isfile(backup):
         if _should_copy(source, backup_directory, backups, should_compare):
-            try:
-                shutil.copy2(source, backup)
-                backups.append(os.path.basename(backup))
-            except OSError as e:
-                print(e)
-                sys.exit(1)
+            shutil.copy2(source, backup)
+            backups.append(os.path.basename(backup))
 
     if number_of_backups > 0:
         _prune_backups(backup_directory, backups, number_of_backups)
@@ -214,11 +201,7 @@ def can_overwrite(path):
 def check_directory(directory):
     """Check if a directory exists, and create it if it doesn't."""
     if not os.path.isdir(directory):
-        try:
-            os.makedirs(directory)
-        except OSError as e:
-            print(e)
-            sys.exit(1)
+        os.makedirs(directory)
 
 
 def compare_directory_list(directory, file_regex, files):
@@ -250,32 +233,18 @@ def decrypt_extract_file(source, output_directory):
 
         if os.path.isdir(root):
             if os.path.isdir(backup):
-                try:
-                    shutil.rmtree(backup)
-                except OSError as e:
-                    print(e)
-                    sys.exit(1)
+                shutil.rmtree(backup)
             elif os.path.isfile(backup):
-                print(f"The {backup} file exists.")
-                sys.exit(1)
+                raise FileExistsError(f"The {backup} file exists.")
 
             os.rename(root, backup)
         elif os.path.isfile(root):
-            print(f"The {root} file exists.")
-            sys.exit(1)
+            raise FileExistsError(f"The {root} file exists.")
 
-        try:
-            tar.extractall(path=output_directory)
-        except (OSError, tarfile.FilterError) as e:
-            print(e)
-            sys.exit(1)
+        tar.extractall(path=output_directory)
 
         if os.path.isdir(backup):
-            try:
-                shutil.rmtree(backup)
-            except OSError as e:
-                print(e)
-                sys.exit(1)
+            shutil.rmtree(backup)
 
 
 def get_config_path(script_path, can_create_directory=True):

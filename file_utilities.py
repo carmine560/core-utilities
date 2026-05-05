@@ -216,6 +216,17 @@ def compare_directory_list(directory, file_regex, files):
             print(f"The {path} file does not exist in the directory.")
 
 
+def _validate_tar_member_path(output_directory, member):
+    """Reject archive members that would escape the output directory."""
+    if member.issym() or member.islnk():
+        raise ValueError(f"Unsafe archive member: {member.name}")
+
+    destination = os.path.abspath(os.path.join(output_directory, member.name))
+    output_root = os.path.abspath(output_directory)
+    if os.path.commonpath((output_root, destination)) != output_root:
+        raise ValueError(f"Unsafe archive member: {member.name}")
+
+
 def decrypt_extract_file(source, output_directory):
     """Decrypt a file and extract its contents to a specified directory."""
     if GNUPG_IMPORT_ERROR:
@@ -228,7 +239,11 @@ def decrypt_extract_file(source, output_directory):
 
     tar_stream = io.BytesIO(decrypted_data.data)
     with tarfile.open(fileobj=tar_stream, mode="r:xz") as tar:
-        root = os.path.join(output_directory, tar.getmembers()[0].name)
+        members = tar.getmembers()
+        for member in members:
+            _validate_tar_member_path(output_directory, member)
+
+        root = os.path.join(output_directory, members[0].name)
         backup = root + ".bak"
 
         if os.path.isdir(root):
@@ -241,7 +256,8 @@ def decrypt_extract_file(source, output_directory):
         elif os.path.isfile(root):
             raise FileExistsError(f"The {root} file exists.")
 
-        tar.extractall(path=output_directory)
+        for member in members:
+            tar.extract(member, path=output_directory)
 
         if os.path.isdir(backup):
             shutil.rmtree(backup)

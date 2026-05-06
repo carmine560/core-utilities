@@ -298,8 +298,7 @@ def list_section(config, section):
             options.append(option)
         return options
 
-    print(f"The '{section}' section does not exist.")
-    return False
+    raise ConfigError(f"The '{section}' section does not exist.")
 
 
 # Interactive Config Modification
@@ -396,8 +395,7 @@ def modify_section(
 
         return True
 
-    print(f"The '{section}' section does not exist.")
-    return False
+    raise ConfigError(f"The '{section}' section does not exist.")
 
 
 def _build_answers_boolean(
@@ -503,8 +501,7 @@ def modify_option(
         prompts = {}
 
     if not config.has_option(section, option):
-        print(f"The '{option}' option does not exist.")
-        return False
+        raise ConfigError(f"The '{option}' option does not exist.")
 
     print(
         f"{ANSI_IDENTIFIER}{option}{ANSI_RESET} = "
@@ -574,8 +571,7 @@ def delete_option(
         write_config(config, config_path, is_encrypted=is_encrypted)
         return True
 
-    print(f"The '{option}' option does not exist.")
-    return False
+    raise ConfigError(f"The '{option}' option does not exist.")
 
 
 # Interactive Value Editors

@@ -79,8 +79,7 @@ def wsl_to_windows_path(path):
 def archive_encrypt_directory(source, output_directory, fingerprint=""):
     """Archive and encrypt a directory using GPG."""
     if GNUPG_IMPORT_ERROR:
-        print(GNUPG_IMPORT_ERROR)
-        return
+        raise UtilityOperationError(str(GNUPG_IMPORT_ERROR))
 
     tar_stream = io.BytesIO()
     with tarfile.open(fileobj=tar_stream, mode="w:xz") as tar:
@@ -232,8 +231,7 @@ def _validate_tar_member_path(output_directory, member):
 def decrypt_extract_file(source, output_directory):
     """Decrypt a file and extract its contents to a specified directory."""
     if GNUPG_IMPORT_ERROR:
-        print(GNUPG_IMPORT_ERROR)
-        return
+        raise UtilityOperationError(str(GNUPG_IMPORT_ERROR))
 
     gpg = gnupg.GPG()
     with open(source, "rb") as f:
@@ -328,7 +326,9 @@ def move_to_trash(path, should_confirm=False, option=None):
     try:
         subprocess.run(command, check=True)
     except (OSError, subprocess.CalledProcessError) as e:
-        print(e)
+        raise UtilityOperationError(
+            f"Unable to move '{path}' to the trash: {e}"
+        ) from e
 
 
 def select_executable(executables):
@@ -764,8 +764,7 @@ def write_chapter(video, current_title, previous_title=None, offset=None):
             offset = float(offset)
         except TypeError:
             offset = 0.0
-        except ValueError as e:
-            print(e)
+        except ValueError:
             offset = 0.0
 
         start = int(1000 * (time.time() - os.path.getctime(video) + offset))

@@ -206,15 +206,23 @@ def check_directory(directory):
 
 
 def compare_directory_list(directory, file_regex, files):
-    """Compare the directory and the list and print missing ones."""
+    """Return discrepancies between directory contents and a file list."""
+    unexpected_files = []
+    missing_files = []
+
     for f in os.listdir(directory):
         if re.fullmatch(file_regex, f) and f not in files.values:
-            print(f"The {os.path.join(directory, f)} file is not in the list.")
+            unexpected_files.append(os.path.join(directory, f))
 
     for f in files:
         path = os.path.join(directory, f)
         if not os.path.isfile(path):
-            print(f"The {path} file does not exist in the directory.")
+            missing_files.append(path)
+
+    return {
+        "unexpected_files": unexpected_files,
+        "missing_files": missing_files,
+    }
 
 
 def _validate_tar_member_path(output_directory, member):

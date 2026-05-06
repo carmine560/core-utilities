@@ -13,6 +13,8 @@ import sys
 import tarfile
 import time
 
+from .errors import UtilityOperationError
+
 try:
     import gnupg
 
@@ -380,10 +382,11 @@ def create_launchers_exit(args, script_path):
     """Create launchers based on command-line arguments and exit."""
     if args.BS:
         create_bash_launcher(script_path)
-        sys.exit()
+        return True
     if sys.platform == "win32" and args.PS:
         create_powershell_launcher(script_path)
-        sys.exit()
+        return True
+    return False
 
 
 def create_bash_launcher(script_path):
@@ -658,8 +661,7 @@ def create_shortcut(
 ):
     """Create a Windows shortcut for a given program."""
     if WINDOWS_IMPORT_ERROR:
-        print(WINDOWS_IMPORT_ERROR)
-        return
+        raise RuntimeError(WINDOWS_IMPORT_ERROR)
 
     program_group = get_program_group(program_group_base)
     check_directory(program_group)
@@ -692,14 +694,16 @@ def delete_shortcut(base, program_group_base=None, icon_location=None):
         try:
             os.remove(shortcut)
         except OSError as e:
-            print(e)
-            sys.exit(1)
+            raise UtilityOperationError(
+                f"Unable to remove shortcut: {shortcut}"
+            ) from e
     if os.path.isdir(program_group) and not os.listdir(program_group):
         try:
             os.rmdir(program_group)
         except OSError as e:
-            print(e)
-            sys.exit(1)
+            raise UtilityOperationError(
+                f"Unable to remove program group: {program_group}"
+            ) from e
 
     if not icon_location:
         icon_location = os.path.join(
@@ -709,8 +713,9 @@ def delete_shortcut(base, program_group_base=None, icon_location=None):
         try:
             os.remove(icon_location)
         except OSError as e:
-            print(e)
-            sys.exit(1)
+            raise UtilityOperationError(
+                f"Unable to remove icon: {icon_location}"
+            ) from e
 
 
 def get_program_group(program_group_base=None):
@@ -732,8 +737,7 @@ def get_program_group(program_group_base=None):
 def get_file_description(executable):
     """Retrieve the file description of a given executable."""
     if WINDOWS_IMPORT_ERROR:
-        print(WINDOWS_IMPORT_ERROR)
-        return None
+        raise RuntimeError(WINDOWS_IMPORT_ERROR)
 
     try:
         language, codepage = win32api.GetFileVersionInfo(
@@ -746,8 +750,7 @@ def get_file_description(executable):
         file_description = win32api.GetFileVersionInfo(
             executable, string_file_info
         )
-    except pywintypes.error as e:
-        print(e)
+    except pywintypes.error:
         file_description = None
 
     return file_description

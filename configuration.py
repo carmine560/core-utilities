@@ -11,6 +11,8 @@ from prompt_toolkit import ANSI
 from prompt_toolkit import prompt as pt_prompt
 from prompt_toolkit.completion import Completer, Completion
 
+from .errors import TradingAssistantError
+
 try:
     import gnupg
 
@@ -873,8 +875,7 @@ def evaluate_value(value):
     except (SyntaxError, ValueError):
         pass
     except (TypeError, MemoryError, RecursionError) as e:
-        print(e)
-        sys.exit(1)
+        raise ConfigError(f"Unable to evaluate config value: {e}") from e
     return evaluated_value
 
 
@@ -893,8 +894,7 @@ def tidy_answer(answers, level=0):
                 initialism = initialism + mnemonics.lower()
                 break
         if initialism == previous_initialism:
-            print("Undetermined mnemonics.")
-            sys.exit(1)
+            raise ConfigError("Undetermined mnemonics.")
         else:
             previous_initialism = initialism
             highlighted_word = word.replace(
@@ -928,14 +928,12 @@ def modify_value(prompt, level=0, value="", all_values=None, limits=()):
         try:
             numeric_value = int(float(value))
         except ValueError as e:
-            print(e)
-            sys.exit(2)
+            raise ConfigError(f"Invalid integer value: {e}") from e
     if isinstance(minimum_value, float) and isinstance(maximum_value, float):
         try:
             numeric_value = float(value)
         except ValueError as e:
-            print(e)
-            sys.exit(2)
+            raise ConfigError(f"Invalid floating-point value: {e}") from e
     if numeric_value is not None:
         if minimum_value is not None:
             numeric_value = max(minimum_value, numeric_value)
@@ -950,8 +948,7 @@ def modify_value(prompt, level=0, value="", all_values=None, limits=()):
 def configure_position(level=0, value="", all_values=None):
     """Configure the position based on user input or mouse click."""
     if GUI_IMPORT_ERROR:
-        print(GUI_IMPORT_ERROR)
-        return False
+        raise TradingAssistantError(str(GUI_IMPORT_ERROR))
 
     value = prompt_for_input(
         f"coordinates/{ANSI_UNDERLINE}c{ANSI_RESET}lick",

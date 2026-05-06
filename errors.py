@@ -15,3 +15,7 @@ class ExternalServiceError(TradingAssistantError):
 
 class MarketDataError(TradingAssistantError):
     """Raised when market data cannot be read, written, or refreshed."""
+
+
+class UtilityOperationError(TradingAssistantError):
+    """Raised when a utility helper cannot complete its filesystem task."""

@@ -93,7 +93,13 @@ def archive_encrypt_directory(source, output_directory, fingerprint=""):
     output = os.path.join(
         output_directory, os.path.basename(source) + ".tar.xz.gpg"
     )
-    gpg.encrypt_file(tar_stream, fingerprint, armor=False, output=output)
+    encrypted = gpg.encrypt_file(
+        tar_stream, fingerprint, armor=False, output=output
+    )
+    if not encrypted.ok:
+        raise UtilityOperationError(
+            f"GPG encryption failed: {encrypted.status}"
+        )
 
 
 def _resolve_source(source, should_compare):
@@ -244,6 +250,12 @@ def decrypt_extract_file(source, output_directory):
     gpg = gnupg.GPG()
     with open(source, "rb") as f:
         decrypted_data = gpg.decrypt_file(f)
+    if not decrypted_data.ok:
+        raise UtilityOperationError(
+            f"GPG decryption failed: {decrypted_data.status}"
+        )
+    if not decrypted_data.data:
+        raise UtilityOperationError("GPG decryption returned no file data.")
 
     tar_stream = io.BytesIO(decrypted_data.data)
     with tarfile.open(fileobj=tar_stream, mode="r:xz") as tar:

@@ -17,6 +17,10 @@ class MarketDataError(TradingAssistantError):
     """Raised when market data cannot be read, written, or refreshed."""
 
 
+class ProcessStateError(TradingAssistantError):
+    """Raised when a required process state prevents an operation."""
+
+
 class GuiInteractionError(TradingAssistantError):
     """Raised when a GUI helper cannot complete a window interaction."""
 

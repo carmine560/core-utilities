@@ -17,6 +17,18 @@ class MarketDataError(TradingAssistantError):
     """Raised when market data cannot be read, written, or refreshed."""
 
 
+class GuiInteractionError(TradingAssistantError):
+    """Raised when a GUI helper cannot complete a window interaction."""
+
+
+class WidgetPositionError(TradingAssistantError):
+    """Raised when a widget position string cannot be applied safely."""
+
+
+class BrowserAutomationError(TradingAssistantError):
+    """Raised when a browser automation action cannot be completed."""
+
+
 class TextRecognitionError(TradingAssistantError):
     """Raised when OCR cannot produce parseable text within set limits."""
 

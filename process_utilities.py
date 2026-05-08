@@ -1,4 +1,4 @@
-"""Manage and monitor application processes and listeners."""
+"""Application process and listener management utilities."""
 
 import re
 import subprocess

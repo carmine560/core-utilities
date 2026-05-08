@@ -1,4 +1,4 @@
-"""Perform data conversions, text operations, and time computations."""
+"""Data conversion, text operation, and time computation utilities."""
 
 import re
 import time

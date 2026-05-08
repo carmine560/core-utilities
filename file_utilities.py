@@ -1,4 +1,4 @@
-"""Operate paths, files, CLI, shortcuts, and text."""
+"""Path, file, CLI, shortcut, and text utilities."""
 
 from datetime import datetime
 import configparser

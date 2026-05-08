@@ -1,4 +1,4 @@
-"""Initialize the script execution environment."""
+"""Script execution environment initialization utilities."""
 
 import ast
 import os

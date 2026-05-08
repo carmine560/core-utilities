@@ -1,4 +1,4 @@
-"""Perform date and time normalization, conversion, and related operations."""
+"""Date and time normalization and conversion utilities."""
 
 from datetime import datetime, timedelta
 

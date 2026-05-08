@@ -21,6 +21,10 @@ class ProcessStateError(TradingAssistantError):
     """Raised when a required process state prevents an operation."""
 
 
+class ScraperError(TradingAssistantError):
+    """Raised when a required page element cannot be scraped safely."""
+
+
 class GuiInteractionError(TradingAssistantError):
     """Raised when a GUI helper cannot complete a window interaction."""
 

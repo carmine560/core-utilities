@@ -295,15 +295,9 @@ def get_config_path(script_path, can_create_directory=True):
             os.path.expandvars("%LOCALAPPDATA%"), script_directory, config_file
         )
     else:
-        if "XDG_CONFIG_HOME" in os.environ:
-            config_path = os.path.join(
-                os.path.expandvars("$XDG_CONFIG_HOME"),
-                script_directory,
-                config_file,
-            )
-
+        config_home = os.environ.get("XDG_CONFIG_HOME", "~/.config")
         config_path = os.path.join(
-            os.path.expanduser("~/.config"), script_directory, config_file
+            os.path.expanduser(config_home), script_directory, config_file
         )
 
     if can_create_directory:

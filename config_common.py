@@ -3,7 +3,14 @@
 import os
 import sys
 
-from prompt_toolkit.completion import Completer, Completion
+try:
+    from prompt_toolkit.completion import Completer, Completion
+
+    PROMPT_TOOLKIT_IMPORT_ERROR = None
+except ModuleNotFoundError as e:
+    PROMPT_TOOLKIT_IMPORT_ERROR = e
+    Completer = object
+    Completion = None
 
 ANSI_BOLD = "\033[1m"
 ANSI_CURRENT = "\033[32m"
@@ -29,6 +36,8 @@ class CustomWordCompleter(Completer):
 
     def __init__(self, words, ignore_case=False):
         """Initialize with words for auto-completion."""
+        if PROMPT_TOOLKIT_IMPORT_ERROR:
+            raise ConfigError(str(PROMPT_TOOLKIT_IMPORT_ERROR))
         self.words = words
         self.ignore_case = ignore_case
 

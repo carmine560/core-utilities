@@ -1,0 +1,731 @@
+"""Interactive configuration prompting and editing utilities."""
+
+from prompt_toolkit import ANSI
+from prompt_toolkit import prompt as pt_prompt
+import time
+
+from .config_common import (
+    ANSI_CURRENT,
+    ANSI_ERROR,
+    ANSI_IDENTIFIER,
+    ANSI_RESET,
+    ANSI_UNDERLINE,
+    ANSI_WARNING,
+    ConfigError,
+    CustomWordCompleter,
+    INDENT,
+)
+from .config_io import write_config
+from .config_validation import evaluate_value, get_strict_boolean
+from .errors import TradingAssistantError
+from . import file_utilities
+
+try:
+    import pyautogui
+    import win32api
+
+    GUI_IMPORT_ERROR = None
+except ModuleNotFoundError as e:
+    GUI_IMPORT_ERROR = e
+
+
+def modify_section(
+    config,
+    section,
+    config_path,
+    backup_parameters=None,
+    option=None,
+    can_back=True,
+    can_insert_delete=False,
+    prompts=None,
+    items=None,
+    all_values=None,
+    limits=(),
+    is_encrypted=False,
+):
+    """Modify a section of a configuration based on user input."""
+    if backup_parameters:
+        file_utilities.backup_file(config_path, **backup_parameters)
+
+    if config.has_section(section):
+        index = 0
+        options = [option] if option else config.options(section)
+        length = len(options) + 1 if can_insert_delete else len(options)
+        if prompts is None:
+            prompts = {}
+
+        while index < length:
+            if index < len(options):
+                option = options[index]
+                current_can_back = False if index == 0 else can_back
+                result = modify_option(
+                    config,
+                    section,
+                    option,
+                    config_path,
+                    can_back=current_can_back,
+                    can_insert_delete=can_insert_delete,
+                    prompts=prompts,
+                    items=items,
+                    all_values=all_values,
+                    limits=limits,
+                    is_encrypted=is_encrypted,
+                )
+
+                if result == "back":
+                    index -= 1
+                    continue
+                if result == "quit":
+                    return result
+            else:
+                print(
+                    f"{ANSI_WARNING}"
+                    f"{prompts.get('end_of_list', 'end of section')}"
+                    f"{ANSI_RESET}"
+                )
+                answer = tidy_answer(["insert", "back", "quit"])
+
+                if answer == "insert":
+                    option = modify_value(prompts.get("key", "option"))
+                    if all_values:
+                        config[section][option] = str(
+                            modify_tuple(
+                                (),
+                                level=1,
+                                prompts=prompts,
+                                all_values=all_values,
+                            )
+                        )
+                        if config[section][option] != "()":
+                            write_config(
+                                config, config_path, is_encrypted=is_encrypted
+                            )
+                            options.append(option)
+                            length += 1
+                    else:
+                        config[section][option] = modify_value("value")
+                        if config[section][option]:
+                            write_config(
+                                config, config_path, is_encrypted=is_encrypted
+                            )
+                            options.append(option)
+                            length += 1
+                elif answer == "back":
+                    index -= 1
+                    continue
+                elif answer in {"", "quit"}:
+                    break
+
+            index += 1
+
+        return True
+
+    raise ConfigError(f"The '{section}' section does not exist.")
+
+
+def _build_answers_boolean(
+    config, section, option, can_back, can_insert_delete
+):
+    """Build answer choices and optional boolean value for an option."""
+    try:
+        boolean_value = get_strict_boolean(config, section, option)
+        answers = ["modify", "toggle", "default", "quit"]
+    except ValueError:
+        boolean_value = None
+        answers = ["modify", "default", "quit"]
+    if can_back:
+        answers.insert(answers.index("quit"), "back")
+    if can_insert_delete:
+        answers[answers.index("default")] = "delete"
+    return answers, boolean_value
+
+
+def _modify_option_by_type(
+    config,
+    section,
+    option,
+    config_path,
+    is_encrypted,
+    evaluated_value,
+    prompts,
+    items,
+    all_values,
+    limits,
+):
+    """Modify a config option based on the evaluated value's type."""
+    if isinstance(evaluated_value, dict):
+        config[section][option] = str(
+            modify_dictionary(
+                evaluated_value,
+                level=1,
+                prompts=prompts,
+                all_values=all_values,
+            )
+        )
+        return True
+
+    if isinstance(evaluated_value, tuple) and all(
+        isinstance(item, str) for item in evaluated_value
+    ):
+        config[section][option] = str(
+            modify_tuple(
+                evaluated_value,
+                level=1,
+                prompts=prompts,
+                all_values=all_values,
+            )
+        )
+        return True
+
+    if isinstance(evaluated_value, list) and all(
+        isinstance(item, tuple) for item in evaluated_value
+    ):
+        if evaluated_value == [()]:
+            evaluated_value = []
+        tuple_list = modify_tuple_list(
+            evaluated_value, prompts=prompts, items=items
+        )
+        if tuple_list:
+            config[section][option] = str(tuple_list)
+            return True
+        delete_option(
+            config, section, option, config_path, is_encrypted=is_encrypted
+        )
+        return False
+
+    config[section][option] = modify_value(
+        prompts.get("value", "value"),
+        value=config[section][option],
+        all_values=all_values,
+        limits=limits,
+    )
+    return True
+
+
+def modify_option(
+    config,
+    section,
+    option,
+    config_path,
+    backup_parameters=None,
+    can_back=False,
+    can_insert_delete=False,
+    initial_value=None,
+    prompts=None,
+    items=None,
+    all_values=None,
+    limits=(),
+    is_encrypted=False,
+):
+    """Modify an option in a section of a configuration file."""
+    if backup_parameters:
+        file_utilities.backup_file(config_path, **backup_parameters)
+    if initial_value:
+        config[section].setdefault(option, initial_value)
+    if prompts is None:
+        prompts = {}
+
+    if not config.has_option(section, option):
+        raise ConfigError(f"The '{option}' option does not exist.")
+
+    print(
+        f"{ANSI_IDENTIFIER}{option}{ANSI_RESET} = "
+        f"{ANSI_CURRENT}{config[section][option]}{ANSI_RESET}"
+    )
+
+    answers, boolean_value = _build_answers_boolean(
+        config, section, option, can_back, can_insert_delete
+    )
+    answer = tidy_answer(answers)
+
+    if answer == "modify":
+        if not _modify_option_by_type(
+            config,
+            section,
+            option,
+            config_path,
+            is_encrypted,
+            evaluate_value(config[section][option]),
+            prompts,
+            items,
+            all_values,
+            limits,
+        ):
+            return False
+    elif answer == "toggle":
+        config[section][option] = str(not boolean_value)
+    elif answer == "empty":
+        config[section][option] = ""
+    elif answer in {"default", "delete"}:
+        delete_option(
+            config, section, option, config_path, is_encrypted=is_encrypted
+        )
+        return False
+    elif answer == "back":
+        return answer
+    elif answer in {"", "quit"}:
+        if config[section][option] == initial_value:
+            delete_option(
+                config,
+                section,
+                option,
+                config_path,
+                is_encrypted=is_encrypted,
+            )
+            return False
+        return answer
+
+    write_config(config, config_path, is_encrypted=is_encrypted)
+    return True
+
+
+def delete_option(
+    config,
+    section,
+    option,
+    config_path,
+    backup_parameters=None,
+    is_encrypted=False,
+):
+    """Delete an option from a section in a configuration file."""
+    if backup_parameters:
+        file_utilities.backup_file(config_path, **backup_parameters)
+
+    if config.has_option(section, option):
+        config.remove_option(section, option)
+        write_config(config, config_path, is_encrypted=is_encrypted)
+        return True
+
+    raise ConfigError(f"The '{option}' option does not exist.")
+
+
+def modify_dictionary(dictionary, level=0, prompts=None, all_values=None):
+    """Iterate over a dictionary and modify its values based on user input."""
+    index = 0
+    keys = list(dictionary.keys())
+    value_prompt = prompts.get("value", "value")
+
+    while index < len(keys):
+        key = keys[index]
+        value = dictionary[key]
+        print(
+            f"{INDENT * level}{ANSI_IDENTIFIER}{key}{ANSI_RESET}: "
+            f"{ANSI_CURRENT}{value}{ANSI_RESET}"
+        )
+        answers = ["modify", "empty", "back", "quit"]
+        if index == 0:
+            answers.remove("back")
+
+        answer = tidy_answer(answers, level=level)
+
+        if answer == "modify":
+            dictionary[key] = modify_value(
+                value_prompt, level=level, value=value, all_values=all_values
+            )
+        elif answer == "empty":
+            dictionary[key] = ""
+        elif answer == "back":
+            index -= 1
+            continue
+        elif answer == "quit":
+            break
+
+        index += 1
+
+    return dictionary
+
+
+def modify_tuple(tuple_entry, level=0, prompts=None, all_values=None):
+    """Modify a tuple based on user prompts and provided values."""
+    tuple_entry = list(tuple_entry)
+    values_prompt = prompts.get("values", ())
+
+    index = 0
+    while index <= len(tuple_entry):
+        if index == len(tuple_entry):
+            print(
+                f"{INDENT * level}"
+                f"{ANSI_WARNING}{prompts.get('end_of_list', 'end of tuple')}"
+                f"{ANSI_RESET}"
+            )
+            answers = ["insert", "back", "quit"]
+        else:
+            print(
+                f"{INDENT * level}"
+                f"{ANSI_CURRENT}{tuple_entry[index]}{ANSI_RESET}"
+            )
+            if values_prompt:
+                answers = ["modify", "empty", "back", "quit"]
+            else:
+                answers = ["insert", "modify", "delete", "back", "quit"]
+        if index == 0:
+            answers.remove("back")
+
+        answer = tidy_answer(answers, level=level)
+
+        if answer in {"insert", "modify"}:
+            value = "" if answer == "insert" else tuple_entry[index]
+            value_prompt = (
+                values_prompt[index]
+                if values_prompt[index : index + 1]
+                else prompts.get("value", "value")
+            )
+            if all_values and len(all_values) == 1:
+                value = modify_value(
+                    value_prompt,
+                    level=level,
+                    value=value,
+                    all_values=all_values[0],
+                )
+            elif all_values and all_values[index : index + 1]:
+                value = modify_value(
+                    value_prompt,
+                    level=level,
+                    value=value,
+                    all_values=all_values[index],
+                )
+            else:
+                value = modify_value(value_prompt, level=level, value=value)
+            if answer == "insert":
+                tuple_entry.insert(index, value)
+            else:
+                tuple_entry[index] = value
+        elif answer == "empty":
+            tuple_entry[index] = ""
+        elif answer == "delete":
+            del tuple_entry[index]
+            index -= 1
+        elif answer == "back":
+            index -= 1
+            continue
+        elif answer == "quit":
+            break
+
+        index += 1
+        if values_prompt and index == len(values_prompt):
+            break
+
+    return tuple(tuple_entry)
+
+
+def _build_tuple_entry(
+    key,
+    value,
+    additional_value,
+    items,
+    level,
+    prompts,
+    value_prompt,
+    additional_value_prompt,
+):
+    """Build a tuple entry based on the key's type classification."""
+    preset_values = None
+    if key in items.get("preset_value_keys", set()):
+        preset_values = items.get("preset_values")
+    elif key in items.get("boolean_value_keys", set()):
+        preset_values = {"True", "False"}
+
+    if key in items.get("no_value_keys", set()):
+        return (key,)
+
+    if key in items.get("optional_value_keys", set()):
+        value = modify_value(
+            value_prompt,
+            level=level,
+            value=value,
+            all_values=("None", *(preset_values or [])),
+        )
+        return (key,) if value.lower() in {"", "none"} else (key, value)
+
+    if key in items.get("additional_value_keys", set()):
+        value = modify_value(value_prompt, level=level, value=value)
+        additional_value = modify_value(
+            additional_value_prompt, level=level, value=additional_value
+        )
+        return (key, value, additional_value)
+
+    if key in items.get("optional_additional_value_keys", set()):
+        value = modify_value(value_prompt, level=level, value=value)
+        additional_value = modify_value(
+            additional_value_prompt,
+            level=level,
+            value=additional_value,
+            all_values=("None", *(preset_values or [])),
+        )
+        return (
+            (key, value)
+            if additional_value.lower() in {"", "none"}
+            else (key, value, additional_value)
+        )
+
+    if key in items.get("positioning_keys", set()):
+        value = configure_position(
+            level=level,
+            value=value,
+            all_values=items.get("preset_geometries"),
+        )
+        return (key, value)
+
+    if key in items.get("nested_keys", set()):
+        value = modify_nested_value(value, level, prompts, items)
+        return (key, value)
+
+    if key in items.get("optional_additional_nested_keys", set()):
+        value = modify_value(value_prompt, level=level, value=value)
+        additional_value = modify_nested_value(
+            additional_value,
+            level,
+            prompts,
+            items,
+            answers=["build", "call", "none"],
+        )
+        return (
+            (key, value)
+            if additional_value in {"", None}
+            else (key, value, additional_value)
+        )
+
+    if key in items.get("control_flow_keys", set()):
+        value = modify_value(
+            value_prompt, level=level, value=value, all_values=preset_values
+        )
+        additional_value = modify_nested_value(
+            additional_value, level, prompts, items
+        )
+        return (key, value, additional_value)
+
+    value = modify_value(
+        value_prompt, level=level, value=value, all_values=preset_values
+    )
+    return (key, value)
+
+
+def modify_tuple_list(tuple_list, level=0, prompts=None, items=None):
+    """Modify a list of tuples based on user prompts and provided items."""
+    if not isinstance(tuple_list, list):
+        tuple_list = []
+    if items is None:
+        items = {}
+
+    value_prompt = prompts.get("value", "value")
+    additional_value_prompt = prompts.get(
+        "additional_value", "additional value"
+    )
+
+    index = 0
+    while index <= len(tuple_list):
+        if index == len(tuple_list):
+            print(
+                f"{INDENT * level}"
+                f"{ANSI_WARNING}{prompts.get('end_of_list', 'end of list')}"
+                f"{ANSI_RESET}"
+            )
+            answers = ["insert", "back", "quit"]
+        else:
+            print(
+                f"{INDENT * level}"
+                f"{ANSI_CURRENT}{tuple_list[index]}{ANSI_RESET}"
+            )
+            answers = ["insert", "modify", "delete", "back", "quit"]
+        if index == 0:
+            answers.remove("back")
+
+        answer = tidy_answer(answers, level=level)
+
+        if answer in {"insert", "modify"}:
+            if answer == "insert":
+                key = value = additional_value = ""
+            else:
+                key, value, additional_value = (tuple_list[index] + ("", ""))[
+                    :3
+                ]
+
+            key = modify_value(
+                prompts.get("key", "key"),
+                level=level,
+                value=key,
+                all_values=items.get("all_keys"),
+            )
+            tuple_entry = _build_tuple_entry(
+                key,
+                value,
+                additional_value,
+                items,
+                level,
+                prompts,
+                value_prompt,
+                additional_value_prompt,
+            )
+            if answer == "insert":
+                tuple_list.insert(index, tuple_entry)
+            else:
+                tuple_list[index] = tuple_entry
+        elif answer == "delete":
+            del tuple_list[index]
+            index -= 1
+        elif answer == "back":
+            index -= 1
+            continue
+        elif answer == "quit":
+            break
+
+        index += 1
+
+    return tuple_list
+
+
+def tidy_answer(answers, level=0):
+    """Tidy up the answer based on user input and initialism."""
+    initialism = ""
+
+    previous_initialism = ""
+    for word_index, word in enumerate(answers):
+        for char_index, _ in enumerate(word):
+            if word[char_index].lower() not in initialism:
+                mnemonics = word[char_index]
+                initialism = initialism + mnemonics.lower()
+                break
+        if initialism == previous_initialism:
+            raise ConfigError("Undetermined mnemonics.")
+
+        previous_initialism = initialism
+        highlighted_word = word.replace(
+            mnemonics, f"{ANSI_UNDERLINE}{mnemonics}{ANSI_RESET}", 1
+        )
+        if word_index == 0:
+            prompt = highlighted_word
+        else:
+            prompt = f"{prompt}/{highlighted_word}"
+
+    answer = input(f"{INDENT * level}{prompt}: ").strip().lower()
+    if answer:
+        if answer[0] not in initialism:
+            answer = ""
+        else:
+            for index, _ in enumerate(initialism):
+                if initialism[index] == answer[0]:
+                    answer = answers[index]
+    return answer
+
+
+def modify_value(prompt, level=0, value="", all_values=None, limits=()):
+    """Modify a value based on user input and specified limits."""
+    value = prompt_for_input(
+        prompt, level=level, value=value, all_values=all_values
+    )
+    minimum_value, maximum_value = limits or (None, None)
+    numeric_value = None
+
+    if isinstance(minimum_value, int) and isinstance(maximum_value, int):
+        try:
+            numeric_value = int(float(value))
+        except ValueError as e:
+            raise ConfigError(f"Invalid integer value: {e}") from e
+    if isinstance(minimum_value, float) and isinstance(maximum_value, float):
+        try:
+            numeric_value = float(value)
+        except ValueError as e:
+            raise ConfigError(f"Invalid floating-point value: {e}") from e
+    if numeric_value is not None:
+        if minimum_value is not None:
+            numeric_value = max(minimum_value, numeric_value)
+        if maximum_value is not None:
+            numeric_value = min(maximum_value, numeric_value)
+        value = str(numeric_value)
+
+    return value
+
+
+def configure_position(level=0, value="", all_values=None):
+    """Configure the position based on user input or mouse click."""
+    if GUI_IMPORT_ERROR:
+        raise TradingAssistantError(str(GUI_IMPORT_ERROR))
+
+    value = prompt_for_input(
+        f"coordinates/{ANSI_UNDERLINE}c{ANSI_RESET}lick",
+        level=level,
+        value=value,
+        all_values=(value, *(all_values or [])),
+    )
+    if value and value[0].lower() == "c":
+        previous_key_state = win32api.GetKeyState(0x01)
+        coordinates = ""
+        print(
+            f"{INDENT * level}{ANSI_WARNING}waiting for click...{ANSI_RESET}"
+        )
+        while True:
+            key_state = win32api.GetKeyState(0x01)
+            if key_state != previous_key_state and key_state not in [0, 1]:
+                coordinates = ", ".join(map(str, pyautogui.position()))
+                print(f"{INDENT * level}coordinates: {coordinates}")
+                break
+
+            time.sleep(0.001)
+        return coordinates
+
+    if value and value.startswith("${") and value.endswith("}"):
+        return value
+
+    parts = value.split(",")
+    if len(parts) == 2:
+        x = parts[0].strip()
+        y = parts[1].strip()
+        if x.isdigit() and y.isdigit():
+            return f"{x}, {y}"
+
+    return configure_position(
+        level=level, value=f"{ANSI_RESET}{ANSI_ERROR}{value}"
+    )
+
+
+def prompt_for_input(prompt, level=0, value="", all_values=None):
+    """Prompt the user for input and return the entered value."""
+    if value:
+        prompt_prefix = (
+            f"{INDENT * level}{prompt} " f"{ANSI_CURRENT}{value}{ANSI_RESET}: "
+        )
+    else:
+        prompt_prefix = f"{INDENT * level}{prompt}: "
+
+    completer = None
+    if all_values:
+        completer = CustomWordCompleter(all_values, ignore_case=True)
+    elif value:
+        completer = CustomWordCompleter((value,), ignore_case=True)
+
+    if completer:
+        value = (
+            pt_prompt(ANSI(prompt_prefix), completer=completer).strip()
+            or value
+        )
+    else:
+        value = input(prompt_prefix).strip()
+    return value
+
+
+def modify_nested_value(
+    value, level, prompts, items, answers=["build", "call"]
+):
+    """Handle a value that can be built as a list or called as a preset."""
+    nested_answer = tidy_answer(answers, level=level)
+    if nested_answer == "build":
+        if isinstance(value, str):
+            value = None
+
+        level += 1
+        value = modify_tuple_list(
+            value, level=level, prompts=prompts, items=items
+        )
+    elif nested_answer == "call":
+        if isinstance(value, list):
+            value = None
+
+        value = modify_value(
+            prompts.get("preset_additional_value", "preset additional value"),
+            level=level,
+            value=value,
+            all_values=items.get("preset_additional_values"),
+        )
+    elif nested_answer == "none":
+        value = None
+    return value

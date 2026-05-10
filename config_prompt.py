@@ -1,8 +1,16 @@
 """Interactive configuration prompting and editing utilities."""
 
-from prompt_toolkit import ANSI
-from prompt_toolkit import prompt as pt_prompt
 import time
+
+try:
+    from prompt_toolkit import ANSI
+    from prompt_toolkit import prompt as pt_prompt
+
+    PROMPT_TOOLKIT_IMPORT_ERROR = None
+except ModuleNotFoundError as e:
+    PROMPT_TOOLKIT_IMPORT_ERROR = e
+    ANSI = None
+    pt_prompt = None
 
 from .config_common import (
     ANSI_CURRENT,
@@ -694,6 +702,8 @@ def prompt_for_input(prompt, level=0, value="", all_values=None):
         completer = CustomWordCompleter((value,), ignore_case=True)
 
     if completer:
+        if PROMPT_TOOLKIT_IMPORT_ERROR:
+            raise ConfigError(str(PROMPT_TOOLKIT_IMPORT_ERROR))
         value = (
             pt_prompt(ANSI(prompt_prefix), completer=completer).strip()
             or value

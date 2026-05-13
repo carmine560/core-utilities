@@ -68,12 +68,12 @@ class ActionExecutionError(TradingAssistantError):
         self,
         message,
         *,
-        action_name,
+        action_path,
         instruction_index,
         command,
     ):
         """Store action context for callers and diagnostics."""
         super().__init__(message)
-        self.action_name = action_name
+        self.action_path = tuple(action_path)
         self.instruction_index = instruction_index
         self.command = command

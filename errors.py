@@ -59,3 +59,21 @@ class TextRecognitionError(TradingAssistantError):
 
 class UtilityOperationError(TradingAssistantError):
     """Raised when a utility helper cannot complete its filesystem task."""
+
+
+class ActionExecutionError(TradingAssistantError):
+    """Raised when an action definition is invalid at execution time."""
+
+    def __init__(
+        self,
+        message,
+        *,
+        action_name,
+        instruction_index,
+        command,
+    ):
+        """Store action context for callers and diagnostics."""
+        super().__init__(message)
+        self.action_name = action_name
+        self.instruction_index = instruction_index
+        self.command = command

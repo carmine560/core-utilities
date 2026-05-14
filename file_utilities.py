@@ -242,6 +242,38 @@ def _validate_tar_member_path(output_directory, member):
         raise ValueError(f"Unsafe archive member: {member.name}")
 
 
+def _remove_path(path):
+    """Remove a file, link, or directory tree if it exists."""
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path)
+    elif os.path.exists(path) or os.path.islink(path):
+        os.remove(path)
+
+
+def _restore_existing_root(root, backup):
+    """Restore the previous root directory after a failed snapshot swap."""
+    _remove_path(root)
+    if not os.path.exists(root) and not os.path.islink(root):
+        if os.path.exists(backup) or os.path.islink(backup):
+            os.rename(backup, root)
+
+
+def _replace_root_from_temporary(temporary_root, root, backup):
+    """Move a temporary restore root into place with rollback on failure."""
+    backup_created = False
+    try:
+        if os.path.isdir(root):
+            os.rename(root, backup)
+            backup_created = True
+        os.rename(temporary_root, root)
+    except Exception:
+        if backup_created:
+            _restore_existing_root(root, backup)
+        raise
+    else:
+        _remove_path(backup)
+
+
 def decrypt_extract_file(source, output_directory):
     """Decrypt a file and extract its contents to a specified directory."""
     if GNUPG_IMPORT_ERROR:
@@ -265,22 +297,24 @@ def decrypt_extract_file(source, output_directory):
 
         root = os.path.join(output_directory, members[0].name)
         backup = root + ".bak"
+        temporary_output = root + ".tmp"
+        temporary_root = os.path.join(temporary_output, members[0].name)
 
-        if os.path.isdir(root):
-            if os.path.isdir(backup):
-                shutil.rmtree(backup)
-            elif os.path.isfile(backup):
-                raise FileExistsError(f"The {backup} file exists.")
+        if os.path.exists(backup) or os.path.islink(backup):
+            raise FileExistsError(f"The {backup} path exists.")
 
-            os.rename(root, backup)
-        elif os.path.isfile(root):
+        if os.path.isfile(root):
             raise FileExistsError(f"The {root} file exists.")
 
-        for member in members:
-            tar.extract(member, path=output_directory)
+        _remove_path(temporary_output)
 
-        if os.path.isdir(backup):
-            shutil.rmtree(backup)
+        try:
+            check_directory(temporary_output)
+            for member in members:
+                tar.extract(member, path=temporary_output)
+            _replace_root_from_temporary(temporary_root, root, backup)
+        finally:
+            _remove_path(temporary_output)
 
 
 def get_config_path(script_path, can_create_directory=True):

@@ -61,6 +61,15 @@ class UtilityOperationError(TradingAssistantError):
     """Raised when a utility helper cannot complete its filesystem task."""
 
 
+class ActionLookupError(TradingAssistantError):
+    """Raised when a requested action is not defined."""
+
+    def __init__(self, message, *, action_name):
+        """Store missing action context for callers and diagnostics."""
+        super().__init__(message)
+        self.action_name = action_name
+
+
 class ActionExecutionError(TradingAssistantError):
     """Raised when an action definition is invalid at execution time."""
 

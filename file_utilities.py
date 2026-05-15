@@ -291,6 +291,10 @@ def decrypt_extract_file(source, output_directory):
     tar_stream = io.BytesIO(decrypted_data.data)
     with tarfile.open(fileobj=tar_stream, mode="r:xz") as tar:
         members = tar.getmembers()
+        if not members:
+            raise UtilityOperationError(
+                "Archive contains no files to extract."
+            )
         for member in members:
             _validate_tar_member_path(output_directory, member)
 

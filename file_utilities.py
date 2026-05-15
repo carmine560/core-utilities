@@ -13,6 +13,7 @@ import sys
 import tarfile
 import time
 
+from . import data_utilities
 from .errors import UtilityOperationError
 
 try:
@@ -34,8 +35,6 @@ try:
 except Exception as e:
     # Treat broken or stubbed Windows bindings the same as a missing install.
     WINDOWS_IMPORT_ERROR = e
-
-from . import data_utilities
 
 # WSL Path Operations
 
@@ -233,7 +232,7 @@ def compare_directory_list(directory, file_regex, files):
 
 def _validate_tar_member_path(output_directory, member):
     """Reject archive members that would escape the output directory."""
-    if member.issym() or member.islnk():
+    if not member.isfile() and not member.isdir():
         raise ValueError(f"Unsafe archive member: {member.name}")
 
     destination = os.path.abspath(os.path.join(output_directory, member.name))

@@ -87,7 +87,12 @@ def archive_encrypt_directory(source, output_directory, fingerprint=""):
     tar_stream.seek(0)
     gpg = gnupg.GPG()
     if not fingerprint:
-        fingerprint = gpg.list_keys()[0]["fingerprint"]
+        keys = gpg.list_keys()
+        if not keys:
+            raise UtilityOperationError("No usable GPG keys found.")
+        fingerprint = keys[0].get("fingerprint")
+        if not fingerprint:
+            raise UtilityOperationError("GPG key has no fingerprint.")
 
     output = os.path.join(
         output_directory, os.path.basename(source) + ".tar.xz.gpg"

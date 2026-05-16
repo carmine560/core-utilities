@@ -4,6 +4,11 @@ import re
 import subprocess
 import time
 
+from .errors import ProcessStateError
+
+SPEECH_JOIN_TIMEOUT_SECONDS = 5
+TERMINATE_TIMEOUT_SECONDS = 1
+
 
 def is_running(process):
     """Determine if a process is currently running."""
@@ -48,6 +53,7 @@ def stop_listeners(
     speech_manager,
     speaking_process,
     indicator_thread=None,
+    speech_join_timeout=SPEECH_JOIN_TIMEOUT_SECONDS,
 ):
     """Stop all listeners and shutdown the managers."""
     if mouse_listener:
@@ -58,8 +64,17 @@ def stop_listeners(
         if speech_manager.get_speech_text():
             time.sleep(0.01)
 
-        speech_manager.set_can_speak(False)
-        speaking_process.join()
-        base_manager.shutdown()
+        try:
+            speech_manager.set_can_speak(False)
+            speaking_process.join(timeout=speech_join_timeout)
+            if speaking_process.is_alive():
+                speaking_process.terminate()
+                speaking_process.join(timeout=TERMINATE_TIMEOUT_SECONDS)
+                raise ProcessStateError(
+                    "Speech process did not stop within "
+                    f"{speech_join_timeout} seconds."
+                )
+        finally:
+            base_manager.shutdown()
     if indicator_thread:
         indicator_thread.stop()

@@ -5,7 +5,8 @@ class CoreUtilitiesError(Exception):
     """Base exception for recoverable core utility errors."""
 
 
-TradingAssistantError = CoreUtilitiesError
+class BrowserAutomationError(CoreUtilitiesError):
+    """Raised when a browser automation action cannot be completed."""
 
 
 class ConfigBuildError(CoreUtilitiesError):
@@ -14,6 +15,10 @@ class ConfigBuildError(CoreUtilitiesError):
 
 class ExternalServiceError(CoreUtilitiesError):
     """Raised when an external service request or API call fails."""
+
+
+class GuiInteractionError(CoreUtilitiesError):
+    """Raised when a GUI helper cannot complete a window interaction."""
 
 
 class MarketDataError(CoreUtilitiesError):
@@ -26,18 +31,6 @@ class ProcessStateError(CoreUtilitiesError):
 
 class ScraperError(CoreUtilitiesError):
     """Raised when a required page element cannot be scraped safely."""
-
-
-class GuiInteractionError(CoreUtilitiesError):
-    """Raised when a GUI helper cannot complete a window interaction."""
-
-
-class WidgetPositionError(CoreUtilitiesError):
-    """Raised when a widget position string cannot be applied safely."""
-
-
-class BrowserAutomationError(CoreUtilitiesError):
-    """Raised when a browser automation action cannot be completed."""
 
 
 class TextRecognitionError(CoreUtilitiesError):
@@ -62,3 +55,7 @@ class TextRecognitionError(CoreUtilitiesError):
 
 class UtilityOperationError(CoreUtilitiesError):
     """Raised when a utility helper cannot complete its filesystem task."""
+
+
+class WidgetPositionError(CoreUtilitiesError):
+    """Raised when a widget position string cannot be applied safely."""

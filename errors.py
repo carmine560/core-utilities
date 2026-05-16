@@ -1,43 +1,46 @@
-"""Shared exception types for trading assistant modules."""
+"""Shared exception types for core utility modules."""
 
 
-class TradingAssistantError(Exception):
-    """Base exception for recoverable application errors."""
+class CoreUtilitiesError(Exception):
+    """Base exception for recoverable core utility errors."""
 
 
-class ConfigBuildError(TradingAssistantError):
+TradingAssistantError = CoreUtilitiesError
+
+
+class ConfigBuildError(CoreUtilitiesError):
     """Raised when configuration defaults cannot be built safely."""
 
 
-class ExternalServiceError(TradingAssistantError):
+class ExternalServiceError(CoreUtilitiesError):
     """Raised when an external service request or API call fails."""
 
 
-class MarketDataError(TradingAssistantError):
+class MarketDataError(CoreUtilitiesError):
     """Raised when market data cannot be read, written, or refreshed."""
 
 
-class ProcessStateError(TradingAssistantError):
+class ProcessStateError(CoreUtilitiesError):
     """Raised when a required process state prevents an operation."""
 
 
-class ScraperError(TradingAssistantError):
+class ScraperError(CoreUtilitiesError):
     """Raised when a required page element cannot be scraped safely."""
 
 
-class GuiInteractionError(TradingAssistantError):
+class GuiInteractionError(CoreUtilitiesError):
     """Raised when a GUI helper cannot complete a window interaction."""
 
 
-class WidgetPositionError(TradingAssistantError):
+class WidgetPositionError(CoreUtilitiesError):
     """Raised when a widget position string cannot be applied safely."""
 
 
-class BrowserAutomationError(TradingAssistantError):
+class BrowserAutomationError(CoreUtilitiesError):
     """Raised when a browser automation action cannot be completed."""
 
 
-class TextRecognitionError(TradingAssistantError):
+class TextRecognitionError(CoreUtilitiesError):
     """Raised when OCR cannot produce parseable text within set limits."""
 
     def __init__(
@@ -57,32 +60,5 @@ class TextRecognitionError(TradingAssistantError):
         self.text_type = text_type
 
 
-class UtilityOperationError(TradingAssistantError):
+class UtilityOperationError(CoreUtilitiesError):
     """Raised when a utility helper cannot complete its filesystem task."""
-
-
-class ActionLookupError(TradingAssistantError):
-    """Raised when a requested action is not defined."""
-
-    def __init__(self, message, *, action_name):
-        """Store missing action context for callers and diagnostics."""
-        super().__init__(message)
-        self.action_name = action_name
-
-
-class ActionExecutionError(TradingAssistantError):
-    """Raised when an action definition is invalid at execution time."""
-
-    def __init__(
-        self,
-        message,
-        *,
-        action_path,
-        instruction_index,
-        command,
-    ):
-        """Store action context for callers and diagnostics."""
-        super().__init__(message)
-        self.action_path = tuple(action_path)
-        self.instruction_index = instruction_index
-        self.command = command

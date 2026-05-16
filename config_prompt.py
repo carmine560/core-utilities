@@ -12,6 +12,7 @@ except ModuleNotFoundError as e:
     ANSI = None
     pt_prompt = None
 
+from . import file_utilities
 from .config_common import (
     ANSI_CURRENT,
     ANSI_ERROR,
@@ -25,8 +26,7 @@ from .config_common import (
 )
 from .config_io import write_config
 from .config_validation import evaluate_value, get_strict_boolean
-from .errors import TradingAssistantError
-from . import file_utilities
+from .errors import CoreUtilitiesError
 
 try:
     import pyautogui
@@ -647,7 +647,7 @@ def modify_value(prompt, level=0, value="", all_values=None, limits=()):
 def configure_position(level=0, value="", all_values=None):
     """Configure the position based on user input or mouse click."""
     if GUI_IMPORT_ERROR:
-        raise TradingAssistantError(str(GUI_IMPORT_ERROR))
+        raise CoreUtilitiesError(str(GUI_IMPORT_ERROR))
 
     value = prompt_for_input(
         f"coordinates/{ANSI_UNDERLINE}c{ANSI_RESET}lick",

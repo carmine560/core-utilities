@@ -37,7 +37,19 @@ def wait_listeners(
 ):
     """Wait for listeners until the stop event is set or process ends."""
     while not stop_listeners_event.is_set():
-        if is_running(process) or is_persistent:
+        try:
+            process_running = is_running(process)
+        except ProcessStateError:
+            stop_listeners(
+                mouse_listener,
+                keyboard_listener,
+                base_manager,
+                speech_manager,
+                speaking_process,
+                indicator_thread=indicator_thread,
+            )
+            raise
+        if process_running or is_persistent:
             time.sleep(1)
         else:
             stop_listeners(

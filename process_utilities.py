@@ -13,9 +13,14 @@ TERMINATE_TIMEOUT_SECONDS = 1
 def is_running(process):
     """Determine if a process is currently running."""
     image = process + ".exe"
-    output = subprocess.check_output(
-        ["tasklist", "/fi", "imagename eq " + image]
-    )
+    try:
+        output = subprocess.check_output(
+            ["tasklist", "/fi", "imagename eq " + image]
+        )
+    except (OSError, subprocess.CalledProcessError) as e:
+        raise ProcessStateError(
+            f"Unable to check whether process '{process}' is running: {e}"
+        ) from e
     return bool(re.search(image, str(output)))
 
 

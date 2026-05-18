@@ -1,8 +1,8 @@
 """Configuration file I/O with optional GPG encryption support."""
 
-from io import StringIO
 import os
 import tempfile
+from io import StringIO
 
 from .config_common import ConfigError
 
@@ -14,7 +14,7 @@ except ModuleNotFoundError as e:
     GNUPG_IMPORT_ERROR = e
 
 
-def _write_file_atomically(target_path, mode, write):
+def write_file_atomically(target_path, mode, write, newline=None):
     """Write a sibling temp file before replacing the final target."""
     directory = os.path.dirname(os.path.abspath(target_path)) or "."
     prefix = f".{os.path.basename(target_path)}."
@@ -26,7 +26,12 @@ def _write_file_atomically(target_path, mode, write):
             with os.fdopen(fd, mode) as f:
                 write(f)
         else:
-            with os.fdopen(fd, mode, encoding="utf-8") as f:
+            with os.fdopen(
+                fd,
+                mode,
+                encoding="utf-8",
+                newline=newline,
+            ) as f:
                 write(f)
         os.replace(temporary_path, target_path)
     finally:
@@ -96,10 +101,10 @@ def write_config(config, config_path, is_encrypted=False):
             raise ConfigError(
                 f"GPG encryption failed: {encrypted_config.status}"
             )
-        _write_file_atomically(
+        write_file_atomically(
             f"{config_path}.gpg",
             "wb",
             lambda f: f.write(encrypted_config.data),
         )
     else:
-        _write_file_atomically(config_path, "w", lambda f: config.write(f))
+        write_file_atomically(config_path, "w", lambda f: config.write(f))

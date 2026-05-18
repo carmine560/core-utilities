@@ -499,7 +499,7 @@ try {{
     Set-Location "{project_path}"
     . "{activate_relative_path}"
     {interpreter} "{os.path.basename(script_path)}" $args
-    # 'Activate.ps1' modifies the current PowerShell session's environment.
+    # Activate.ps1 modifies the current PowerShell session's environment.
     deactivate
 }} finally {{
     Pop-Location

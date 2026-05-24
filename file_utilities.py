@@ -1,6 +1,5 @@
 """Path, file, CLI, shortcut, and text utilities."""
 
-from datetime import datetime
 import configparser
 import io
 import os
@@ -12,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import time
+from datetime import datetime
 
 from . import data_utilities
 from .errors import UtilityOperationError
@@ -449,6 +449,11 @@ def create_bash_launcher(script_path):
     """Create a Bash launcher for a Python script."""
     project_path = os.path.dirname(script_path)
     activate_path, interpreter = select_venv(project_path)
+    if not activate_path or not interpreter:
+        raise UtilityOperationError(
+            "Unable to create Bash launcher: no virtual environment "
+            f"activation script found in {project_path}."
+        )
     activate_relative_path = os.path.relpath(activate_path, project_path)
     if sys.platform == "win32":
         project_path = windows_to_wsl_path(project_path)
@@ -462,6 +467,7 @@ def create_bash_launcher(script_path):
     launcher_string = f"""#!/bin/bash
 
 set -e
+
 cd "{project_path}"
 . "{activate_relative_path}"
 {interpreter} "{os.path.basename(script_path)}" "$@"
@@ -487,6 +493,11 @@ def create_powershell_launcher(script_path):
     activate_path, interpreter = select_venv(
         project_path, activate="Activate.ps1"
     )
+    if not activate_path or not interpreter:
+        raise UtilityOperationError(
+            "Unable to create PowerShell launcher: no virtual environment "
+            f"activation script found in {project_path}."
+        )
     activate_relative_path = os.path.relpath(activate_path, project_path)
     launcher_path = os.path.join(
         os.path.expanduser("~"),

@@ -58,18 +58,29 @@ def windows_to_wsl_path(path):
     """Convert a Windows path to a WSL path."""
     if not shutil.which("wsl"):
         return path
-    return subprocess.run(
-        ["wsl", "wslpath", repr(path)], capture_output=True, text=True
-    ).stdout.rstrip()
-
-
-def wsl_to_windows_path(path):
-    """Convert a WSL path to a Windows path."""
-    if not shutil.which("wsl"):
-        return path
-    return subprocess.run(
-        ["wsl", "wslpath", "-m", path], capture_output=True, text=True
-    ).stdout.rstrip()
+    try:
+        converted_path = subprocess.run(
+            ["wsl", "--exec", "wslpath", path],
+            capture_output=True,
+            text=True,
+        )
+    # Subprocess launch failed.
+    except OSError as e:
+        raise UtilityOperationError(
+            f"Unable to convert Windows path to WSL path: {path}: {e}"
+        ) from e
+    # wslpath returned a non-zero exit code.
+    if converted_path.returncode:
+        error_message = (
+            converted_path.stderr.strip()
+            or converted_path.stdout.strip()
+            or "wslpath exited without an error message."
+        )
+        raise UtilityOperationError(
+            "Unable to convert Windows path to WSL path: "
+            f"{path}: {error_message}"
+        )
+    return converted_path.stdout.rstrip()
 
 
 # File and Directory Operations

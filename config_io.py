@@ -25,6 +25,8 @@ def write_file_atomically(target_path, mode, write, newline=None):
         if "b" in mode:
             with os.fdopen(fd, mode) as f:
                 write(f)
+                f.flush()
+                os.fsync(f.fileno())
         else:
             with os.fdopen(
                 fd,
@@ -33,7 +35,23 @@ def write_file_atomically(target_path, mode, write, newline=None):
                 newline=newline,
             ) as f:
                 write(f)
+                f.flush()
+                os.fsync(f.fileno())
         os.replace(temporary_path, target_path)
+        try:
+            directory_fd = os.open(
+                directory,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            )
+        except OSError:
+            directory_fd = None
+        if directory_fd is not None:
+            try:
+                os.fsync(directory_fd)
+            except OSError:
+                pass
+            finally:
+                os.close(directory_fd)
     finally:
         if os.path.exists(temporary_path):
             os.remove(temporary_path)

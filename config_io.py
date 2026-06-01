@@ -1,6 +1,7 @@
 """Configuration file I/O with optional GPG encryption support."""
 
 import os
+import subprocess
 import tempfile
 from io import StringIO
 
@@ -95,23 +96,49 @@ def read_config(config, config_path, is_encrypted=False):
 def write_config(config, config_path, is_encrypted=False):
     """Write config to a file, encrypt if is_encrypted is True."""
     if is_encrypted:
+        fingerprint = config.get("General", "fingerprint", fallback="")
+        config_string = StringIO()
+        config.write(config_string)
+        if not fingerprint:
+            try:
+                encrypted_config = subprocess.run(
+                    [
+                        "gpg",
+                        "--batch",
+                        "--yes",
+                        "--encrypt",
+                        "--default-recipient-self",
+                    ],
+                    input=config_string.getvalue().encode("utf-8"),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+            except OSError as e:
+                raise ConfigError(f"Unable to run gpg: {e}") from e
+            if encrypted_config.returncode:
+                status = encrypted_config.stderr.decode(
+                    "utf-8", errors="replace"
+                ).strip()
+                if not status:
+                    status = (
+                        f"gpg exited with status {encrypted_config.returncode}"
+                    )
+                raise ConfigError(f"GPG encryption failed: {status}")
+            if not encrypted_config.stdout:
+                raise ConfigError("GPG encryption returned no config data.")
+            write_file_atomically(
+                f"{config_path}.gpg",
+                "wb",
+                lambda f: f.write(encrypted_config.stdout),
+            )
+            return
+
         if GNUPG_IMPORT_ERROR:
             raise RuntimeError(GNUPG_IMPORT_ERROR)
 
         gpg = gnupg.GPG()
         gpg.encoding = "utf-8"
-
-        fingerprint = config.get("General", "fingerprint", fallback="")
-        if not fingerprint:
-            keys = gpg.list_keys()
-            if not keys:
-                raise ConfigError("No usable GPG keys found.")
-            fingerprint = keys[0].get("fingerprint")
-            if not fingerprint:
-                raise ConfigError("GPG key has no fingerprint.")
-
-        config_string = StringIO()
-        config.write(config_string)
         encrypted_config = gpg.encrypt(
             config_string.getvalue(), fingerprint, armor=False
         )

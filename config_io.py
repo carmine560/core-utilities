@@ -7,13 +7,6 @@ from io import StringIO
 
 from .config_common import ConfigError
 
-try:
-    import gnupg
-
-    GNUPG_IMPORT_ERROR = None
-except ModuleNotFoundError as e:
-    GNUPG_IMPORT_ERROR = e
-
 
 def write_file_atomically(target_path, mode, write, newline=None):
     """Write a sibling temp file before replacing the final target."""
@@ -63,32 +56,40 @@ def read_config(config, config_path, is_encrypted=False):
     if is_encrypted:
         encrypted_config_path = f"{config_path}.gpg"
         if os.path.isfile(encrypted_config_path):
-            if GNUPG_IMPORT_ERROR:
-                raise RuntimeError(GNUPG_IMPORT_ERROR)
-
-            with open(encrypted_config_path, "rb") as f:
-                encrypted_config = f.read()
-
-            gpg = gnupg.GPG()
-            decrypted_config = gpg.decrypt(encrypted_config)
-            if not getattr(
-                decrypted_config,
-                "ok",
-                bool(getattr(decrypted_config, "data", b"")),
-            ):
-                status = getattr(
-                    decrypted_config, "status", "decryption failed"
+            try:
+                decrypted_config = subprocess.run(
+                    [
+                        "gpg",
+                        "--batch",
+                        "--yes",
+                        "--decrypt",
+                        encrypted_config_path,
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
                 )
+            except OSError as e:
+                raise ConfigError(f"Unable to run gpg: {e}") from e
+            if decrypted_config.returncode:
+                status = decrypted_config.stderr.decode(
+                    "utf-8", errors="replace"
+                ).strip()
+                if not status:
+                    status = (
+                        "gpg exited with status "
+                        f"{decrypted_config.returncode}"
+                    )
                 raise ConfigError(
                     "GPG decryption failed while reading config: "
-                    f"{status or 'decryption failed'}"
+                    f"{status}"
                 )
 
-            decrypted_data = getattr(decrypted_config, "data", b"")
+            decrypted_data = decrypted_config.stdout
             if not decrypted_data:
                 raise ConfigError("GPG decryption returned no config data.")
 
-            config.read_string(decrypted_data.decode())
+            config.read_string(decrypted_data.decode("utf-8"))
     else:
         config.read(config_path, encoding="utf-8")
 
@@ -99,57 +100,45 @@ def write_config(config, config_path, is_encrypted=False):
         fingerprint = config.get("General", "fingerprint", fallback="")
         config_string = StringIO()
         config.write(config_string)
-        if not fingerprint:
-            try:
-                encrypted_config = subprocess.run(
-                    [
-                        "gpg",
-                        "--batch",
-                        "--yes",
-                        "--encrypt",
-                        "--default-recipient-self",
-                    ],
-                    input=config_string.getvalue().encode("utf-8"),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    check=False,
+        args = [
+            "gpg",
+            "--batch",
+            "--yes",
+            "--encrypt",
+        ]
+        if fingerprint:
+            args.extend(["--recipient", fingerprint])
+        else:
+            # python-gnupg requires an explicit recipient and cannot express
+            # GnuPG's default-recipient-self behavior.
+            args.append("--default-recipient-self")
+
+        try:
+            encrypted_config = subprocess.run(
+                args,
+                input=config_string.getvalue().encode("utf-8"),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+        except OSError as e:
+            raise ConfigError(f"Unable to run gpg: {e}") from e
+        if encrypted_config.returncode:
+            status = encrypted_config.stderr.decode(
+                "utf-8", errors="replace"
+            ).strip()
+            if not status:
+                status = (
+                    "gpg exited with status "
+                    f"{encrypted_config.returncode}"
                 )
-            except OSError as e:
-                raise ConfigError(f"Unable to run gpg: {e}") from e
-            if encrypted_config.returncode:
-                status = encrypted_config.stderr.decode(
-                    "utf-8", errors="replace"
-                ).strip()
-                if not status:
-                    status = (
-                        f"gpg exited with status {encrypted_config.returncode}"
-                    )
-                raise ConfigError(f"GPG encryption failed: {status}")
-            if not encrypted_config.stdout:
-                raise ConfigError("GPG encryption returned no config data.")
-            write_file_atomically(
-                f"{config_path}.gpg",
-                "wb",
-                lambda f: f.write(encrypted_config.stdout),
-            )
-            return
-
-        if GNUPG_IMPORT_ERROR:
-            raise RuntimeError(GNUPG_IMPORT_ERROR)
-
-        gpg = gnupg.GPG()
-        gpg.encoding = "utf-8"
-        encrypted_config = gpg.encrypt(
-            config_string.getvalue(), fingerprint, armor=False
-        )
-        if not encrypted_config.ok:
-            raise ConfigError(
-                f"GPG encryption failed: {encrypted_config.status}"
-            )
+            raise ConfigError(f"GPG encryption failed: {status}")
+        if not encrypted_config.stdout:
+            raise ConfigError("GPG encryption returned no config data.")
         write_file_atomically(
             f"{config_path}.gpg",
             "wb",
-            lambda f: f.write(encrypted_config.data),
+            lambda f: f.write(encrypted_config.stdout),
         )
     else:
         write_file_atomically(config_path, "w", lambda f: config.write(f))

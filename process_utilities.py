@@ -1,6 +1,5 @@
 """Application process and listener management utilities."""
 
-import re
 import subprocess
 import time
 
@@ -15,13 +14,19 @@ def is_running(process):
     image = process + ".exe"
     try:
         output = subprocess.check_output(
-            ["tasklist", "/fi", "imagename eq " + image]
+            ["tasklist", "/fi", "imagename eq " + image],
+            text=True,
+            errors="replace",
         )
     except (OSError, subprocess.CalledProcessError) as e:
         raise ProcessStateError(
             f"Unable to check whether process '{process}' is running: {e}"
         ) from e
-    return bool(re.search(image, str(output)))
+    for line in output.splitlines():
+        fields = line.split(maxsplit=1)
+        if fields and fields[0].casefold() == image.casefold():
+            return True
+    return False
 
 
 def wait_listeners(

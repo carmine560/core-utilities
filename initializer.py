@@ -1,6 +1,5 @@
 """Script execution environment initialization utilities."""
 
-import ast
 import os
 
 from . import file_utilities
@@ -28,19 +27,3 @@ class Initializer:
 
         self.actions_section = f"{self.process} Actions"
         self.variables_section = f"{self.process} Variables"
-
-
-def extract_commands(source, command="command"):
-    """Extract specific commands from the given source code."""
-    commands = []
-    tree = ast.parse(source)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.If):
-            test = node.test
-            if isinstance(test, ast.Compare):
-                left = test.left
-                if isinstance(left, ast.Name) and left.id == command:
-                    comparator = test.comparators[0]
-                    if isinstance(comparator, ast.Constant):
-                        commands.append(comparator.value)
-    return commands

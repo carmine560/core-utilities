@@ -17,13 +17,6 @@ from . import data_utilities
 from .errors import UtilityOperationError
 
 try:
-    import gnupg
-
-    GNUPG_IMPORT_ERROR = None
-except ModuleNotFoundError as e:
-    GNUPG_IMPORT_ERROR = e
-
-try:
     import winreg
 
     from PIL import Image, ImageDraw, ImageFont
@@ -88,33 +81,41 @@ def windows_to_wsl_path(path):
 
 def archive_encrypt_directory(source, output_directory, fingerprint=""):
     """Archive and encrypt a directory using GPG."""
-    if GNUPG_IMPORT_ERROR:
-        raise UtilityOperationError(str(GNUPG_IMPORT_ERROR))
-
     tar_stream = io.BytesIO()
     with tarfile.open(fileobj=tar_stream, mode="w:xz") as tar:
         tar.add(source, arcname=os.path.basename(source))
 
-    tar_stream.seek(0)
-    gpg = gnupg.GPG()
-    if not fingerprint:
-        keys = gpg.list_keys()
-        if not keys:
-            raise UtilityOperationError("No usable GPG keys found.")
-        fingerprint = keys[0].get("fingerprint")
-        if not fingerprint:
-            raise UtilityOperationError("GPG key has no fingerprint.")
-
     output = os.path.join(
         output_directory, os.path.basename(source) + ".tar.xz.gpg"
     )
-    encrypted = gpg.encrypt_file(
-        tar_stream, fingerprint, armor=False, output=output
-    )
-    if not encrypted.ok:
-        raise UtilityOperationError(
-            f"GPG encryption failed: {encrypted.status}"
+    args = [
+        "gpg",
+        "--batch",
+        "--yes",
+        "--encrypt",
+        "--output",
+        output,
+    ]
+    if fingerprint:
+        args.extend(["--recipient", fingerprint])
+    else:
+        args.append("--default-recipient-self")
+
+    try:
+        encrypted = subprocess.run(
+            args,
+            input=tar_stream.getvalue(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
         )
+    except OSError as e:
+        raise UtilityOperationError(f"Unable to run gpg: {e}") from e
+    if encrypted.returncode:
+        status = encrypted.stderr.decode("utf-8", errors="replace").strip()
+        if not status:
+            status = f"gpg exited with status {encrypted.returncode}"
+        raise UtilityOperationError(f"GPG encryption failed: {status}")
 
 
 def _resolve_source(source, should_compare):
@@ -291,20 +292,32 @@ def _replace_root_from_temporary(temporary_root, root, backup):
 
 def decrypt_extract_file(source, output_directory):
     """Decrypt a file and extract its contents to a specified directory."""
-    if GNUPG_IMPORT_ERROR:
-        raise UtilityOperationError(str(GNUPG_IMPORT_ERROR))
-
-    gpg = gnupg.GPG()
-    with open(source, "rb") as f:
-        decrypted_data = gpg.decrypt_file(f)
-    if not decrypted_data.ok:
-        raise UtilityOperationError(
-            f"GPG decryption failed: {decrypted_data.status}"
+    try:
+        decrypted_data = subprocess.run(
+            [
+                "gpg",
+                "--batch",
+                "--yes",
+                "--decrypt",
+                source,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
         )
-    if not decrypted_data.data:
+    except OSError as e:
+        raise UtilityOperationError(f"Unable to run gpg: {e}") from e
+    if decrypted_data.returncode:
+        status = decrypted_data.stderr.decode(
+            "utf-8", errors="replace"
+        ).strip()
+        if not status:
+            status = f"gpg exited with status {decrypted_data.returncode}"
+        raise UtilityOperationError(f"GPG decryption failed: {status}")
+    if not decrypted_data.stdout:
         raise UtilityOperationError("GPG decryption returned no file data.")
 
-    tar_stream = io.BytesIO(decrypted_data.data)
+    tar_stream = io.BytesIO(decrypted_data.stdout)
     with tarfile.open(fileobj=tar_stream, mode="r:xz") as tar:
         members = tar.getmembers()
         if not members:

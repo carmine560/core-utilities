@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 from datetime import datetime
 
@@ -93,8 +94,6 @@ def archive_encrypt_directory(source, output_directory, fingerprint=""):
         "--batch",
         "--yes",
         "--encrypt",
-        "--output",
-        output,
     ]
     if fingerprint:
         args.extend(["--recipient", fingerprint])
@@ -116,6 +115,37 @@ def archive_encrypt_directory(source, output_directory, fingerprint=""):
         if not status:
             status = f"gpg exited with status {encrypted.returncode}"
         raise UtilityOperationError(f"GPG encryption failed: {status}")
+    if not encrypted.stdout:
+        raise UtilityOperationError("GPG encryption returned no file data.")
+
+    fd, temporary_output = tempfile.mkstemp(
+        prefix=f".{os.path.basename(output)}.",
+        suffix=".tmp",
+        dir=output_directory,
+    )
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(encrypted.stdout)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary_output, output)
+        try:
+            directory_fd = os.open(
+                output_directory,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            )
+        except OSError:
+            directory_fd = None
+        if directory_fd is not None:
+            try:
+                os.fsync(directory_fd)
+            except OSError:
+                pass
+            finally:
+                os.close(directory_fd)
+    finally:
+        if os.path.exists(temporary_output):
+            os.remove(temporary_output)
 
 
 def _resolve_source(source, should_compare):

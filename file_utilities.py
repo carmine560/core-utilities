@@ -146,7 +146,7 @@ def _split_source_name(source, should_compare):
 
 def _list_backups(backup_directory, base, suffix):
     """List existing backups matching the expected naming pattern."""
-    pattern = rf"{base}-\d{{8}}T\d{{6}}{suffix}"
+    pattern = rf"{base}-\d{{8}}T\d{{6}}(?:\.\d{{3}})?{suffix}"
     return sorted(
         f for f in os.listdir(backup_directory) if re.fullmatch(pattern, f)
     )
@@ -193,8 +193,10 @@ def backup_file(
     check_directory(backup_directory)
 
     base, suffix = _split_source_name(source, should_compare)
-    timestamp = datetime.fromtimestamp(os.path.getmtime(source)).strftime(
-        "-%Y%m%dT%H%M%S"
+    mtime = datetime.fromtimestamp(os.path.getmtime(source))
+    timestamp = (
+        f"-{mtime.strftime('%Y%m%dT%H%M%S')}."
+        f"{mtime.microsecond // 1000:03d}"
     )
     backup = os.path.join(backup_directory, f"{base}{timestamp}{suffix}")
     backups = _list_backups(backup_directory, base, suffix)

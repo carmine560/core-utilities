@@ -17,6 +17,8 @@ from datetime import datetime
 from . import data_utilities
 from .errors import UtilityOperationError
 
+GPG_TIMEOUT_SECONDS = 30
+
 try:
     import winreg
 
@@ -107,7 +109,12 @@ def archive_encrypt_directory(source, output_directory, fingerprint=""):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
+            timeout=GPG_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired as e:
+        raise UtilityOperationError(
+            f"GPG encryption timed out after {GPG_TIMEOUT_SECONDS} seconds."
+        ) from e
     except OSError as e:
         raise UtilityOperationError(f"Unable to run gpg: {e}") from e
     if encrypted.returncode:
@@ -336,7 +343,12 @@ def decrypt_extract_file(source, output_directory):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
+            timeout=GPG_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired as e:
+        raise UtilityOperationError(
+            f"GPG decryption timed out after {GPG_TIMEOUT_SECONDS} seconds."
+        ) from e
     except OSError as e:
         raise UtilityOperationError(f"Unable to run gpg: {e}") from e
     if decrypted_data.returncode:

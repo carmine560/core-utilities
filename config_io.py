@@ -7,6 +7,8 @@ from io import StringIO
 
 from .config_common import ConfigError
 
+GPG_TIMEOUT_SECONDS = 30
+
 
 def write_file_atomically(target_path, mode, write, newline=None):
     """Write a sibling temp file before replacing the final target."""
@@ -68,7 +70,13 @@ def read_config(config, config_path, is_encrypted=False):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     check=False,
+                    timeout=GPG_TIMEOUT_SECONDS,
                 )
+            except subprocess.TimeoutExpired as e:
+                raise ConfigError(
+                    "GPG decryption timed out while reading config after "
+                    f"{GPG_TIMEOUT_SECONDS} seconds."
+                ) from e
             except OSError as e:
                 raise ConfigError(f"Unable to run gpg: {e}") from e
             if decrypted_config.returncode:
@@ -81,8 +89,7 @@ def read_config(config, config_path, is_encrypted=False):
                         f"{decrypted_config.returncode}"
                     )
                 raise ConfigError(
-                    "GPG decryption failed while reading config: "
-                    f"{status}"
+                    f"GPG decryption failed while reading config: {status}"
                 )
 
             decrypted_data = decrypted_config.stdout
@@ -120,7 +127,13 @@ def write_config(config, config_path, is_encrypted=False):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=False,
+                timeout=GPG_TIMEOUT_SECONDS,
             )
+        except subprocess.TimeoutExpired as e:
+            raise ConfigError(
+                "GPG encryption timed out after "
+                f"{GPG_TIMEOUT_SECONDS} seconds."
+            ) from e
         except OSError as e:
             raise ConfigError(f"Unable to run gpg: {e}") from e
         if encrypted_config.returncode:
@@ -129,8 +142,7 @@ def write_config(config, config_path, is_encrypted=False):
             ).strip()
             if not status:
                 status = (
-                    "gpg exited with status "
-                    f"{encrypted_config.returncode}"
+                    f"gpg exited with status {encrypted_config.returncode}"
                 )
             raise ConfigError(f"GPG encryption failed: {status}")
         if not encrypted_config.stdout:

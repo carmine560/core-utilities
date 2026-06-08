@@ -82,15 +82,8 @@ def windows_to_wsl_path(path):
 # File and Directory Operations
 
 
-def archive_encrypt_directory(source, output_directory, fingerprint=""):
-    """Archive and encrypt a directory using GPG."""
-    tar_stream = io.BytesIO()
-    with tarfile.open(fileobj=tar_stream, mode="w:xz") as tar:
-        tar.add(source, arcname=os.path.basename(source))
-
-    output = os.path.join(
-        output_directory, os.path.basename(source) + ".tar.xz.gpg"
-    )
+def _build_gpg_encrypt_args(fingerprint):
+    """Build GPG arguments for encrypting stdin to stdout."""
     args = [
         "gpg",
         "--batch",
@@ -101,11 +94,28 @@ def archive_encrypt_directory(source, output_directory, fingerprint=""):
         args.extend(["--recipient", fingerprint])
     else:
         args.append("--default-recipient-self")
+    return args
 
+
+def _decode_gpg_status(result):
+    """Return stderr text or a fallback status for a failed GPG process."""
+    status = result.stderr.decode("utf-8", errors="replace").strip()
+    if not status:
+        status = f"gpg exited with status {result.returncode}"
+    return status
+
+
+def read_encrypted_file(source):
+    """Decrypt a GPG file into bytes without writing plaintext to disk."""
     try:
-        encrypted = subprocess.run(
-            args,
-            input=tar_stream.getvalue(),
+        decrypted = subprocess.run(
+            [
+                "gpg",
+                "--batch",
+                "--yes",
+                "--decrypt",
+                source,
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
@@ -113,32 +123,45 @@ def archive_encrypt_directory(source, output_directory, fingerprint=""):
         )
     except subprocess.TimeoutExpired as e:
         raise UtilityOperationError(
-            f"GPG encryption timed out after {GPG_TIMEOUT_SECONDS} seconds."
+            f"GPG decryption timed out after {GPG_TIMEOUT_SECONDS} seconds."
         ) from e
     except OSError as e:
         raise UtilityOperationError(f"Unable to run gpg: {e}") from e
-    if encrypted.returncode:
-        status = encrypted.stderr.decode("utf-8", errors="replace").strip()
-        if not status:
-            status = f"gpg exited with status {encrypted.returncode}"
-        raise UtilityOperationError(f"GPG encryption failed: {status}")
-    if not encrypted.stdout:
-        raise UtilityOperationError("GPG encryption returned no file data.")
+    if decrypted.returncode:
+        status = _decode_gpg_status(decrypted)
+        raise UtilityOperationError(f"GPG decryption failed: {status}")
+    if not decrypted.stdout:
+        raise UtilityOperationError("GPG decryption returned no file data.")
+    return decrypted.stdout
 
-    fd, temporary_output = tempfile.mkstemp(
-        prefix=f".{os.path.basename(output)}.",
-        suffix=".tmp",
-        dir=output_directory,
+
+def write_file_atomically(target_path, mode, write, newline=None):
+    """Write a sibling temp file before replacing the final target."""
+    directory = os.path.dirname(os.path.abspath(target_path)) or "."
+    prefix = f".{os.path.basename(target_path)}."
+    fd, temporary_path = tempfile.mkstemp(
+        prefix=prefix, suffix=".tmp", dir=directory
     )
     try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(encrypted.stdout)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(temporary_output, output)
+        if "b" in mode:
+            with os.fdopen(fd, mode) as f:
+                write(f)
+                f.flush()
+                os.fsync(f.fileno())
+        else:
+            with os.fdopen(
+                fd,
+                mode,
+                encoding="utf-8",
+                newline=newline,
+            ) as f:
+                write(f)
+                f.flush()
+                os.fsync(f.fileno())
+        os.replace(temporary_path, target_path)
         try:
             directory_fd = os.open(
-                output_directory,
+                directory,
                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
             )
         except OSError:
@@ -151,8 +174,45 @@ def archive_encrypt_directory(source, output_directory, fingerprint=""):
             finally:
                 os.close(directory_fd)
     finally:
-        if os.path.exists(temporary_output):
-            os.remove(temporary_output)
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
+
+
+def write_encrypted_file(target, data, fingerprint=""):
+    """Encrypt bytes with GPG and atomically write only encrypted data."""
+    try:
+        encrypted = subprocess.run(
+            _build_gpg_encrypt_args(fingerprint),
+            input=data,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=GPG_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise UtilityOperationError(
+            f"GPG encryption timed out after {GPG_TIMEOUT_SECONDS} seconds."
+        ) from e
+    except OSError as e:
+        raise UtilityOperationError(f"Unable to run gpg: {e}") from e
+    if encrypted.returncode:
+        status = _decode_gpg_status(encrypted)
+        raise UtilityOperationError(f"GPG encryption failed: {status}")
+    if not encrypted.stdout:
+        raise UtilityOperationError("GPG encryption returned no file data.")
+    write_file_atomically(target, "wb", lambda f: f.write(encrypted.stdout))
+
+
+def archive_encrypt_directory(source, output_directory, fingerprint=""):
+    """Archive and encrypt a directory using GPG."""
+    tar_stream = io.BytesIO()
+    with tarfile.open(fileobj=tar_stream, mode="w:xz") as tar:
+        tar.add(source, arcname=os.path.basename(source))
+
+    output = os.path.join(
+        output_directory, os.path.basename(source) + ".tar.xz.gpg"
+    )
+    write_encrypted_file(output, tar_stream.getvalue(), fingerprint)
 
 
 def _resolve_source(source, should_compare):
@@ -331,37 +391,7 @@ def _replace_root_from_temporary(temporary_root, root, backup):
 
 def decrypt_extract_file(source, output_directory):
     """Decrypt a file and extract its contents to a specified directory."""
-    try:
-        decrypted_data = subprocess.run(
-            [
-                "gpg",
-                "--batch",
-                "--yes",
-                "--decrypt",
-                source,
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            timeout=GPG_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired as e:
-        raise UtilityOperationError(
-            f"GPG decryption timed out after {GPG_TIMEOUT_SECONDS} seconds."
-        ) from e
-    except OSError as e:
-        raise UtilityOperationError(f"Unable to run gpg: {e}") from e
-    if decrypted_data.returncode:
-        status = decrypted_data.stderr.decode(
-            "utf-8", errors="replace"
-        ).strip()
-        if not status:
-            status = f"gpg exited with status {decrypted_data.returncode}"
-        raise UtilityOperationError(f"GPG decryption failed: {status}")
-    if not decrypted_data.stdout:
-        raise UtilityOperationError("GPG decryption returned no file data.")
-
-    tar_stream = io.BytesIO(decrypted_data.stdout)
+    tar_stream = io.BytesIO(read_encrypted_file(source))
     with tarfile.open(fileobj=tar_stream, mode="r:xz") as tar:
         members = tar.getmembers()
         if not members:

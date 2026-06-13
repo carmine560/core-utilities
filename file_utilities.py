@@ -5,6 +5,7 @@ import io
 import os
 import platform
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -545,6 +546,7 @@ def create_launchers_exit(args, script_path):
 
 def create_bash_launcher(script_path):
     """Create a Bash launcher for a Python script."""
+    script_path = os.path.abspath(script_path)
     project_path = os.path.dirname(script_path)
     activate_path, interpreter = select_venv(project_path)
     if not activate_path or not interpreter:
@@ -552,10 +554,11 @@ def create_bash_launcher(script_path):
             "Unable to create Bash launcher: no virtual environment "
             f"activation script found in {project_path}."
         )
-    activate_relative_path = os.path.relpath(activate_path, project_path)
+    interpreter_path = os.path.join(
+        os.path.dirname(activate_path), interpreter
+    )
     if sys.platform == "win32":
-        project_path = windows_to_wsl_path(project_path)
-        activate_relative_path = windows_to_wsl_path(activate_relative_path)
+        interpreter_path = windows_to_wsl_path(interpreter_path)
 
     launcher_path = os.path.join(
         os.path.expanduser("~"),
@@ -566,9 +569,10 @@ def create_bash_launcher(script_path):
 
 set -e
 
-cd "{project_path}"
-. "{activate_relative_path}"
-{interpreter} "{os.path.basename(script_path)}" "$@"
+exec \\
+    {shlex.quote(interpreter_path)} \\
+    {shlex.quote(script_path)} \\
+    "$@"
 """
 
     if not can_overwrite(launcher_path):
@@ -587,6 +591,7 @@ cd "{project_path}"
 
 def create_powershell_launcher(script_path):
     """Create a PowerShell launcher for a Python script."""
+    script_path = os.path.abspath(script_path)
     project_path = os.path.dirname(script_path)
     activate_path, interpreter = select_venv(
         project_path, activate="Activate.ps1"
@@ -596,23 +601,20 @@ def create_powershell_launcher(script_path):
             "Unable to create PowerShell launcher: no virtual environment "
             f"activation script found in {project_path}."
         )
-    activate_relative_path = os.path.relpath(activate_path, project_path)
+    interpreter_path = os.path.join(
+        os.path.dirname(activate_path), interpreter
+    )
     launcher_path = os.path.join(
         os.path.expanduser("~"),
         "Downloads",
         f"{os.path.splitext(os.path.basename(script_path))[0]}.ps1",
     )
     launcher_string = f"""$ErrorActionPreference = "Stop"
-Push-Location
-try {{
-    Set-Location "{project_path}"
-    . "{activate_relative_path}"
-    {interpreter} "{os.path.basename(script_path)}" $args
-    # Activate.ps1 modifies the current PowerShell session's environment.
-    deactivate
-}} finally {{
-    Pop-Location
-}}
+
+& "{interpreter_path}" `
+  "{script_path}" @args
+
+exit $LASTEXITCODE
 """
 
     if not can_overwrite(launcher_path):

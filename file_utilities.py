@@ -495,19 +495,18 @@ def select_executable(executables):
     return None
 
 
-def select_venv(directory, activate="activate"):
-    """Find the first venv and its activation script from a list of venvs."""
+def select_venv_interpreter(directory):
+    """Find the first Python interpreter from a list of venvs."""
     for venv in (".env", ".venv", "env", "venv"):
         venv_path = os.path.join(directory, venv)
         if os.path.isdir(venv_path):
-            for d, interpreter in {
-                "Scripts": "python.exe",
-                "bin": "python",
-            }.items():
-                activate_path = os.path.join(venv_path, d, activate)
-                if os.path.isfile(activate_path):
-                    return (activate_path, interpreter)
-    return (None, None)
+            for interpreter in (
+                os.path.join(venv_path, "Scripts", "python.exe"),
+                os.path.join(venv_path, "bin", "python"),
+            ):
+                if os.path.isfile(interpreter):
+                    return interpreter
+    return None
 
 
 # CLI Operations
@@ -548,15 +547,12 @@ def create_bash_launcher(script_path):
     """Create a Bash launcher for a Python script."""
     script_path = os.path.abspath(script_path)
     project_path = os.path.dirname(script_path)
-    activate_path, interpreter = select_venv(project_path)
-    if not activate_path or not interpreter:
+    interpreter_path = select_venv_interpreter(project_path)
+    if not interpreter_path:
         raise UtilityOperationError(
             "Unable to create Bash launcher: no virtual environment "
-            f"activation script found in {project_path}."
+            f"interpreter found in {project_path}."
         )
-    interpreter_path = os.path.join(
-        os.path.dirname(activate_path), interpreter
-    )
     if sys.platform == "win32":
         interpreter_path = windows_to_wsl_path(interpreter_path)
 
@@ -593,17 +589,12 @@ def create_powershell_launcher(script_path):
     """Create a PowerShell launcher for a Python script."""
     script_path = os.path.abspath(script_path)
     project_path = os.path.dirname(script_path)
-    activate_path, interpreter = select_venv(
-        project_path, activate="Activate.ps1"
-    )
-    if not activate_path or not interpreter:
+    interpreter_path = select_venv_interpreter(project_path)
+    if not interpreter_path:
         raise UtilityOperationError(
             "Unable to create PowerShell launcher: no virtual environment "
-            f"activation script found in {project_path}."
+            f"interpreter found in {project_path}."
         )
-    interpreter_path = os.path.join(
-        os.path.dirname(activate_path), interpreter
-    )
     launcher_path = os.path.join(
         os.path.expanduser("~"),
         "Downloads",

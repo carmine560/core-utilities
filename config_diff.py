@@ -5,6 +5,7 @@ import configparser
 from .config_common import (
     ANSI_BOLD,
     ANSI_CURRENT,
+    ANSI_ERROR,
     ANSI_IDENTIFIER,
     ANSI_RESET,
     ANSI_WARNING,
@@ -58,7 +59,7 @@ def _print_option_diff(
             else f"{ANSI_WARNING}(empty){ANSI_RESET}"
         )
     else:
-        default_display = f"{ANSI_WARNING}(not exist){ANSI_RESET}"
+        default_display = f"{ANSI_ERROR}(not exist){ANSI_RESET}"
 
     user_display = (
         f"{ANSI_CURRENT}{_truncate_string(user_value)}{ANSI_RESET}"

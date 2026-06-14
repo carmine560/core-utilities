@@ -516,34 +516,36 @@ def add_launcher_options(group):
     """Add launcher generation options to the argparse group."""
     group.add_argument(
         "-BS",
-        action="store_true",
-        help="save "
+        nargs="?",
+        const=".",
+        help="generate "
         f"a {'WSL Bash' if sys.platform == 'win32' else 'Bash'} script "
-        f"to '{os.path.join(os.path.expanduser('~'), 'Downloads')}' "
         "to launch this script and exit",
+        metavar="OUTPUT_DIRECTORY",
     )
     if sys.platform == "win32":
         group.add_argument(
             "-PS",
-            action="store_true",
-            help="save a PowerShell 7 script "
-            f"to '{os.path.join(os.path.expanduser('~'), 'Downloads')}' "
-            "to launch this script and exit",
+            nargs="?",
+            const=".",
+            help="generate a PowerShell 7 script to launch this script "
+            "and exit",
+            metavar="OUTPUT_DIRECTORY",
         )
 
 
 def create_launchers_exit(args, script_path):
     """Create launchers based on command-line arguments and exit."""
     if args.BS:
-        create_bash_launcher(script_path)
+        create_bash_launcher(script_path, args.BS)
         return True
     if sys.platform == "win32" and args.PS:
-        create_powershell_launcher(script_path)
+        create_powershell_launcher(script_path, args.PS)
         return True
     return False
 
 
-def create_bash_launcher(script_path):
+def create_bash_launcher(script_path, output_directory):
     """Create a Bash launcher for a Python script."""
     script_path = os.path.abspath(script_path)
     project_path = os.path.dirname(script_path)
@@ -557,8 +559,7 @@ def create_bash_launcher(script_path):
         interpreter_path = windows_to_wsl_path(interpreter_path)
 
     launcher_path = os.path.join(
-        os.path.expanduser("~"),
-        "Downloads",
+        os.path.realpath(output_directory),
         f"{os.path.splitext(os.path.basename(script_path))[0]}.sh",
     )
     launcher_string = f"""#!/bin/bash
@@ -585,7 +586,7 @@ exec \\
         )
 
 
-def create_powershell_launcher(script_path):
+def create_powershell_launcher(script_path, output_directory):
     """Create a PowerShell launcher for a Python script."""
     script_path = os.path.abspath(script_path)
     project_path = os.path.dirname(script_path)
@@ -596,8 +597,7 @@ def create_powershell_launcher(script_path):
             f"interpreter found in {project_path}."
         )
     launcher_path = os.path.join(
-        os.path.expanduser("~"),
-        "Downloads",
+        os.path.realpath(output_directory),
         f"{os.path.splitext(os.path.basename(script_path))[0]}.ps1",
     )
     launcher_string = f"""$ErrorActionPreference = "Stop"

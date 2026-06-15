@@ -447,18 +447,18 @@ def get_config_path(script_path, can_create_directory=True):
     return config_path
 
 
-def get_latest_file(directory, regex):
-    """Fetch the most recent file from the directory."""
-    files = [
-        p
-        for p in [
-            os.path.join(directory, f)
-            for f in os.listdir(directory)
-            if re.fullmatch(regex, f)
-        ]
-        if os.path.isfile(p)
-    ]
-    return False if not files else max(files, key=os.path.getctime)
+def get_writing_file(directory, regex):
+    """Fetch the most recently modified matching file being written to."""
+    writing_files = []
+    for root, _directories, filenames in os.walk(directory):
+        for filename in filenames:
+            path = os.path.join(root, filename)
+            relative_path = os.path.relpath(path, directory).replace(
+                os.sep, "/"
+            )
+            if re.fullmatch(regex, relative_path) and is_writing(path):
+                writing_files.append(path)
+    return max(writing_files, key=os.path.getmtime, default=False)
 
 
 def is_writing(path):

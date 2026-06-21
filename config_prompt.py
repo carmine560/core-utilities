@@ -474,6 +474,15 @@ def _build_tuple_entry(
         )
         return (key, value)
 
+    if key in items.get("optional_positioning_keys", set()):
+        value = configure_position(
+            level=level,
+            value=value,
+            all_values=items.get("preset_geometries"),
+            allow_empty=True,
+        )
+        return (key,) if value.lower() in {"", "none"} else (key, value)
+
     if key in items.get("nested_keys", set()):
         value = modify_nested_value(value, level, prompts, items)
         return (key, value)
@@ -644,7 +653,7 @@ def modify_value(prompt, level=0, value="", all_values=None, limits=()):
     return value
 
 
-def configure_position(level=0, value="", all_values=None):
+def configure_position(level=0, value="", all_values=None, allow_empty=False):
     """Configure the position based on user input or mouse click."""
     if GUI_IMPORT_ERROR:
         raise CoreUtilitiesError(str(GUI_IMPORT_ERROR))
@@ -653,8 +662,15 @@ def configure_position(level=0, value="", all_values=None):
         f"coordinates/{ANSI_UNDERLINE}c{ANSI_RESET}lick",
         level=level,
         value=value,
-        all_values=(value, *(all_values or [])),
+        all_values=(
+            value,
+            *(("None",) if allow_empty else ()),
+            *(all_values or []),
+        ),
     )
+    if allow_empty and value.lower() in {"", "none"}:
+        return ""
+
     if value and value[0].lower() == "c":
         previous_key_state = win32api.GetKeyState(0x01)
         coordinates = ""
@@ -682,7 +698,10 @@ def configure_position(level=0, value="", all_values=None):
             return f"{x}, {y}"
 
     return configure_position(
-        level=level, value=f"{ANSI_RESET}{ANSI_ERROR}{value}"
+        level=level,
+        value=f"{ANSI_RESET}{ANSI_ERROR}{value}",
+        all_values=all_values,
+        allow_empty=allow_empty,
     )
 
 
